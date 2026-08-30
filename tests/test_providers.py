@@ -1,0 +1,34 @@
+import json
+
+from dox.providers import chat_endpoint, extract_tool_call, resolve_local_backend
+from dox.config import Config, load_values
+
+
+def test_chat_endpoint():
+    assert chat_endpoint("https://example.test/v1") == "https://example.test/v1/chat/completions"
+    full = "https://example.test/v1/chat/completions"
+    assert chat_endpoint(full) == full
+
+
+def test_extracts_openai_tool_call():
+    message = {
+        "tool_calls": [
+            {"function": {"name": "copy_file", "arguments": json.dumps({"source": "a", "destination": "b"})}}
+        ]
+    }
+    assert extract_tool_call(message) == {
+        "name": "copy_file",
+        "arguments": {"source": "a", "destination": "b"},
+    }
+
+
+def test_extracts_qwen_xml_call():
+    message = {
+        "content": '<think></think><tool_call>{"name":"git_status","arguments":{"path":"."}}</tool_call>'
+    }
+    assert extract_tool_call(message)["name"] == "git_status"
+
+
+def test_auto_backend_is_cross_platform_llama_cpp():
+    config = Config.from_values(load_values(__import__("pathlib").Path("/missing")))
+    assert resolve_local_backend(config) == "llama-cpp"
