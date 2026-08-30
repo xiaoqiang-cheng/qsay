@@ -134,7 +134,8 @@ Provider.complete(messages, tools?, max_tokens) -> assistant message
 - API Key 直接保存在用户配置文件中，不依赖额外环境变量
 - 请求只包含当前自然语言请求、必要的目标平台信息和工具 Schema，不默认发送项目内容或历史
 - API 默认使用零温度、短输出和无思考过程提示；API 服务是否支持真正关闭隐藏 reasoning 取决于服务商，没有跨供应商统一参数
-- Qwen-compatible API 显式发送 `enable_thinking=false`；其他 API 只使用通用参数和无思考过程提示
+- Qwen-compatible API 显式发送 `enable_thinking=false`；DeepSeek V4 使用官方 `thinking={"type":"disabled"}`；未知 API 只使用标准字段和无思考过程提示
+- 对明确拒绝可选字段的 OpenAI-compatible endpoint，自动移除不兼容字段并重试；认证失败、模型不存在等错误不重试
 - llama.cpp/server 追加 Qwen 的 `/no_think`，MLX 显式使用 `enable_thinking=False`
 - Provider 返回的 token 用量进入计划的 `token_usage`，供交互展示和 JSON/评估报表使用
 

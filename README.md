@@ -109,7 +109,9 @@ qsay --print "解压 backup.tar 到 ./backup"
 
 API Provider 接受 OpenAI-compatible `/chat/completions` 接口。
 
-默认请求使用 `temperature=0`、短输出上限和“只返回最终 JSON”的提示，不要求模型输出思考过程。Qwen API 还会显式发送 `enable_thinking=false`；本地 Qwen 的 llama.cpp/server 会追加 `/no_think`，MLX 使用 `enable_thinking=False`。其他通用 API 没有统一的隐藏推理开关，具体服务是否在内部推理由服务商和模型决定。
+默认请求使用 `temperature=0`、短输出上限和“只返回最终 JSON”的提示，不要求模型输出思考过程。Qwen API 会显式发送 `enable_thinking=false`；DeepSeek V4 会发送官方的 `thinking={"type":"disabled"}`；本地 Qwen 的 llama.cpp/server 会追加 `/no_think`，MLX 使用 `enable_thinking=False`。未知模型只接收标准 OpenAI-compatible 字段，不会被强行附加厂商参数。
+
+不同 OpenAI-compatible 服务对可选字段的支持并不完全一致。如果 endpoint 明确拒绝 `thinking`、`enable_thinking`、`response_format` 或 token 上限字段，qsay 会自动移除不兼容字段并进行有限次数的降级重试（或切换到兼容的 token 字段），而不会重试认证失败、模型不存在等真正的请求错误。
 
 定位单次命令的等待时间：
 

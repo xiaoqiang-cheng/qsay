@@ -35,6 +35,15 @@ RESPONSE_SCHEMA = (
 )
 
 
+class APIRequestError(RuntimeError):
+    """An HTTP error returned by an OpenAI-compatible endpoint."""
+
+    def __init__(self, status: int, body: str):
+        self.status = status
+        self.body = body
+        super().__init__(f"HTTP {status}: {body}")
+
+
 def command_system_prompt(platform: str, shell: str, language: str) -> str:
     return task_system_prompt(platform, shell, language, "command")
 
@@ -102,6 +111,7 @@ def post_chat(
     temperature: float = 0.0,
     max_tokens: int = 256,
     disable_thinking: Optional[bool] = None,
+    thinking_options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "model": model,
@@ -115,47 +125,114 @@ def post_chat(
         payload["tool_choice"] = "auto"
     else:
         payload["response_format"] = {"type": "json_object"}
-    # Qwen-compatible APIs expose a provider-specific switch. Only send it
-    # when requested so strict OpenAI-compatible endpoints are unaffected.
-    if disable_thinking is not None:
+    # Thinking controls are not part of the OpenAI base schema. Add them only
+    # for a model family that documents the parameter; unknown providers get a
+    # portable request and still receive the no-chain-of-thought prompt.
+    if thinking_options:
+        payload.update(thinking_options)
+    elif disable_thinking is not None:
         payload["enable_thinking"] = not disable_thinking
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    request = urllib.request.Request(
-        chat_endpoint(base_url),
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers=headers,
-        method="POST",
-    )
-    try:
-        roundtrip_started = time.perf_counter()
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            raw_response = response.read()
-        roundtrip_ms = (time.perf_counter() - roundtrip_started) * 1000
-        decode_started = time.perf_counter()
-        data = json.loads(raw_response.decode("utf-8"))
-        decode_ms = (time.perf_counter() - decode_started) * 1000
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"HTTP {exc.code}: {body or exc.reason}") from exc
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise RuntimeError(str(exc)) from exc
-    try:
-        message = data["choices"][0]["message"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError("API 响应中缺少 choices[0].message") from exc
-    if not isinstance(message, dict):
-        raise RuntimeError("API message 不是 JSON object")
+
+    # OpenAI-compatible services differ in which optional fields they accept.
+    # Retry only when the server explicitly identifies an unsupported field;
+    # this keeps strict endpoints working without hiding authentication or
+    # invalid-model errors. The retry is safe because chat completion is a
+    # read-only request.
+    roundtrip_ms = 0.0
+    decode_ms = 0.0
+    attempts = 0
+    while True:
+        request = urllib.request.Request(
+            chat_endpoint(base_url),
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        attempts += 1
+        try:
+            roundtrip_started = time.perf_counter()
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                raw_response = response.read()
+            roundtrip_ms += (time.perf_counter() - roundtrip_started) * 1000
+            decode_started = time.perf_counter()
+            data = json.loads(raw_response.decode("utf-8"))
+            decode_ms += (time.perf_counter() - decode_started) * 1000
+            try:
+                candidate = data["choices"][0]["message"]
+            except (KeyError, IndexError, TypeError) as exc:
+                raise RuntimeError("API 响应中缺少 choices[0].message") from exc
+            if not isinstance(candidate, dict):
+                raise RuntimeError("API message 不是 JSON object")
+            # DeepSeek documents that JSON Output can occasionally produce an
+            # empty content field. A single portable retry without
+            # response_format often recovers the final JSON; tool calls are
+            # excluded because content=None is normal for them.
+            if (
+                not tools
+                and "response_format" in payload
+                and not message_content(candidate).strip()
+                and attempts < 3
+            ):
+                payload.pop("response_format", None)
+                continue
+            message = candidate
+            break
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            field = unsupported_parameter(body, payload)
+            if field is not None and attempts <= 3:
+                if field == "max_tokens":
+                    payload.pop("max_tokens", None)
+                    payload["max_completion_tokens"] = max_tokens
+                else:
+                    payload.pop(field, None)
+                continue
+            raise APIRequestError(exc.code, body or str(exc.reason)) from exc
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise RuntimeError(str(exc)) from exc
     message = dict(message)
     message["_timing"] = {
         "api_roundtrip_ms": round(roundtrip_ms, 3),
         "response_decode_ms": round(decode_ms, 3),
+        "api_attempts": attempts,
     }
     usage = normalize_usage(data.get("usage"))
     if usage:
         message["_usage"] = usage
     return message
+
+
+def unsupported_parameter(body: str, payload: Dict[str, Any]) -> Optional[str]:
+    """Find an optional request field rejected by a compatible API.
+
+    Providers use a variety of error messages (``unknown parameter``,
+    ``additional properties`` and ``not supported``). We only downgrade when
+    both an explicit unsupported marker and a field currently in the payload
+    are present, so errors such as invalid credentials or model names are not
+    accidentally retried.
+    """
+    lower = body.lower()
+    markers = (
+        "unsupported",
+        "not support",
+        "unknown parameter",
+        "unrecognized",
+        "additional propert",
+        "extra inputs",
+        "invalid parameter",
+        "not allowed",
+    )
+    if not any(marker in lower for marker in markers):
+        return None
+    # Check more specific names first because ``thinking`` is a substring of
+    # some vendor error messages that mention ``enable_thinking``.
+    for field in ("enable_thinking", "response_format", "max_completion_tokens", "max_tokens", "tool_choice", "tools", "thinking"):
+        if field in payload and field in lower:
+            return field
+    return None
 
 
 def normalize_usage(value: Any, estimated: bool = False) -> Optional[Dict[str, Any]]:
@@ -243,7 +320,6 @@ class APIProvider(Provider):
             )
 
     def complete(self, messages: List[Dict[str, str]], tools: Optional[List[Dict[str, Any]]] = None, max_tokens: int = 256) -> Dict[str, Any]:
-        disable_thinking = is_qwen_model(self.model)
         return post_chat(
             self.base_url,
             self.model,
@@ -253,7 +329,7 @@ class APIProvider(Provider):
             tools,
             0.0,
             max_tokens,
-            disable_thinking=disable_thinking,
+            thinking_options=thinking_parameters(self.model),
         )
 
 
@@ -261,6 +337,26 @@ def is_qwen_model(model: str) -> bool:
     """Return whether the model name supports Qwen's no-thinking switch."""
     normalized = model.lower()
     return "qwen" in normalized or "qwq" in normalized
+
+
+def is_deepseek_v4_model(model: str) -> bool:
+    """Return whether the model uses DeepSeek V4's thinking request field."""
+    normalized = model.lower().replace("_", "-").replace("/", "-")
+    return "deepseek-v4" in normalized
+
+
+def thinking_parameters(model: str) -> Dict[str, Any]:
+    """Return vendor-specific parameters that disable hidden reasoning.
+
+    There is no standard OpenAI field for thinking control. Keep the base
+    request portable for unknown models and opt into documented extensions only
+    when the model family is unambiguous.
+    """
+    if is_qwen_model(model):
+        return {"enable_thinking": False}
+    if is_deepseek_v4_model(model):
+        return {"thinking": {"type": "disabled"}}
+    return {}
 
 
 def model_cache_dir() -> Path:
@@ -389,7 +485,7 @@ class ServerLocalProvider(Provider):
             tools,
             0.0,
             max_tokens,
-            disable_thinking=is_qwen_model(self.model),
+            thinking_options=thinking_parameters(self.model),
         )
 
 
@@ -460,6 +556,19 @@ def message_content(message: Dict[str, Any]) -> str:
     content = message.get("content")
     if isinstance(content, str):
         return content
+    if isinstance(content, list):
+        # Some OpenAI-compatible gateways use the multimodal content-part
+        # shape even for text-only responses: [{"type":"text","text":"..."}].
+        # Keep only textual parts and ignore images/audio metadata.
+        parts: List[str] = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict):
+                text = part.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "".join(parts)
     return ""
 
 
