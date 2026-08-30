@@ -17,6 +17,9 @@ class Handler(BaseHTTPRequestHandler):
         if "messages" not in body:
             self.send_error(400, "missing messages")
             return
+        if str(body.get("model", "")).lower().startswith("qwen") and body.get("enable_thinking") is not False:
+            self.send_error(400, "qwen thinking was not disabled")
+            return
         user = body["messages"][-1].get("content", "")
         if body.get("tools"):
             if "解压" in user or "extract" in user.lower():

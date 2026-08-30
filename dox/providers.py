@@ -5,6 +5,7 @@ import os
 import platform as platform_module
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
@@ -38,7 +39,8 @@ def command_system_prompt(platform: str, shell: str, language: str) -> str:
         "set clarification to a concise question and command to an empty string. "
         f"JSON schema: {PLAN_SCHEMA}. The command must target platform={platform}, "
         f"shell={shell}, user interface language={language_name}. Never include "
-        "secrets or pretend to have run the command."
+        "secrets or pretend to have run the command. Keep every value concise; "
+        "use an empty assumptions array unless an assumption is essential."
     )
 
 
@@ -56,6 +58,7 @@ def post_chat(
     tools: Optional[List[Dict[str, Any]]] = None,
     temperature: float = 0.0,
     max_tokens: int = 256,
+    disable_thinking: Optional[bool] = None,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "model": model,
@@ -69,6 +72,10 @@ def post_chat(
         payload["tool_choice"] = "auto"
     else:
         payload["response_format"] = {"type": "json_object"}
+    # Qwen-compatible APIs expose a provider-specific switch. Only send it
+    # when requested so strict OpenAI-compatible endpoints are unaffected.
+    if disable_thinking is not None:
+        payload["enable_thinking"] = not disable_thinking
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -79,8 +86,13 @@ def post_chat(
         method="POST",
     )
     try:
+        roundtrip_started = time.perf_counter()
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            data = json.loads(response.read().decode("utf-8"))
+            raw_response = response.read()
+        roundtrip_ms = (time.perf_counter() - roundtrip_started) * 1000
+        decode_started = time.perf_counter()
+        data = json.loads(raw_response.decode("utf-8"))
+        decode_ms = (time.perf_counter() - decode_started) * 1000
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"HTTP {exc.code}: {body or exc.reason}") from exc
@@ -93,6 +105,10 @@ def post_chat(
     if not isinstance(message, dict):
         raise RuntimeError("API message 不是 JSON object")
     message = dict(message)
+    message["_timing"] = {
+        "api_roundtrip_ms": round(roundtrip_ms, 3),
+        "response_decode_ms": round(decode_ms, 3),
+    }
     usage = normalize_usage(data.get("usage"))
     if usage:
         message["_usage"] = usage
@@ -118,15 +134,23 @@ def normalize_usage(value: Any, estimated: bool = False) -> Optional[Dict[str, A
     input_tokens = integer("input_tokens", "prompt_tokens")
     output_tokens = integer("output_tokens", "completion_tokens")
     total_tokens = integer("total_tokens")
+    details = value.get("completion_tokens_details") or value.get("output_tokens_details")
+    reasoning_tokens = integer("reasoning_tokens")
+    if reasoning_tokens is None and isinstance(details, dict):
+        item = details.get("reasoning_tokens")
+        if isinstance(item, int) and not isinstance(item, bool):
+            reasoning_tokens = item
     if total_tokens is None and input_tokens is not None and output_tokens is not None:
         total_tokens = input_tokens + output_tokens
-    if input_tokens is None and output_tokens is None and total_tokens is None:
+    if input_tokens is None and output_tokens is None and total_tokens is None and reasoning_tokens is None:
         return None
     result: Dict[str, Any] = {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "total_tokens": total_tokens,
     }
+    if reasoning_tokens is not None:
+        result["reasoning_tokens"] = reasoning_tokens
     if estimated:
         result["estimated"] = True
     return result
@@ -134,6 +158,11 @@ def normalize_usage(value: Any, estimated: bool = False) -> Optional[Dict[str, A
 
 def message_usage(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     value = message.get("_usage")
+    return value if isinstance(value, dict) else None
+
+
+def message_timing(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    value = message.get("_timing")
     return value if isinstance(value, dict) else None
 
 
@@ -171,7 +200,24 @@ class APIProvider(Provider):
             )
 
     def complete(self, messages: List[Dict[str, str]], tools: Optional[List[Dict[str, Any]]] = None, max_tokens: int = 256) -> Dict[str, Any]:
-        return post_chat(self.base_url, self.model, messages, self.timeout, self.api_key, tools, 0.0, max_tokens)
+        disable_thinking = is_qwen_model(self.model)
+        return post_chat(
+            self.base_url,
+            self.model,
+            messages,
+            self.timeout,
+            self.api_key,
+            tools,
+            0.0,
+            max_tokens,
+            disable_thinking=disable_thinking,
+        )
+
+
+def is_qwen_model(model: str) -> bool:
+    """Return whether the model name supports Qwen's no-thinking switch."""
+    normalized = model.lower()
+    return "qwen" in normalized or "qwq" in normalized
 
 
 def model_cache_dir() -> Path:
@@ -291,7 +337,17 @@ class ServerLocalProvider(Provider):
         local_messages = [dict(item) for item in messages]
         if local_messages and local_messages[-1].get("role") == "user":
             local_messages[-1]["content"] = local_messages[-1].get("content", "") + "\n/no_think"
-        return post_chat(self.base_url, self.model, local_messages, self.timeout, None, tools, 0.0, max_tokens)
+        return post_chat(
+            self.base_url,
+            self.model,
+            local_messages,
+            self.timeout,
+            None,
+            tools,
+            0.0,
+            max_tokens,
+            disable_thinking=is_qwen_model(self.model),
+        )
 
 
 class MLXProvider(Provider):

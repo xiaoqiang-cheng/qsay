@@ -15,6 +15,7 @@ class Plan:
     tools: List[str] = field(default_factory=list)
     clarification: Optional[str] = None
     token_usage: Optional[Dict[str, Any]] = None
+    timing_ms: Optional[Dict[str, float]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

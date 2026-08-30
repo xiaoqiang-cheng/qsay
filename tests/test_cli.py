@@ -50,3 +50,12 @@ def test_plan_displays_provider_token_usage(capsys):
 def test_json_plan_includes_token_usage(capsys):
     plan = plan_request(UsageProvider(), "查看 git 状态", "macos", "zh")
     assert plan.to_dict()["token_usage"]["total_tokens"] == 50
+
+
+def test_plan_records_and_displays_timing(capsys):
+    plan = plan_request(UsageProvider(), "查看 git 状态", "macos", "zh")
+    assert plan.timing_ms["llm_ms"] >= 0
+    show_plan(plan, "zh", timing=True)
+    output = capsys.readouterr().out
+    assert "耗时：" in output
+    assert "LLM" in output

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from dox.providers import APIProvider, chat_endpoint, extract_tool_call, normalize_usage, resolve_local_backend, suppress_native_output
+from dox.providers import APIProvider, chat_endpoint, extract_tool_call, is_qwen_model, normalize_usage, resolve_local_backend, suppress_native_output
 from dox.config import Config, load_values
 
 
@@ -20,6 +20,20 @@ def test_normalizes_openai_token_usage():
         "output_tokens": 7,
         "total_tokens": 28,
     }
+
+
+def test_normalizes_reasoning_token_usage():
+    assert normalize_usage({
+        "prompt_tokens": 21,
+        "completion_tokens": 7,
+        "completion_tokens_details": {"reasoning_tokens": 5},
+    })["reasoning_tokens"] == 5
+
+
+def test_detects_qwen_models_for_no_thinking_parameter():
+    assert is_qwen_model("qwen3.8-max")
+    assert is_qwen_model("Qwen/Qwen3-32B")
+    assert not is_qwen_model("gpt-4o-mini")
 
 
 def test_extracts_openai_tool_call():

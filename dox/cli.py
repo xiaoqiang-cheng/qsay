@@ -7,13 +7,14 @@ import platform as platform_module
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Optional, Sequence
 
 from . import __version__
 from .config import Config, config_command, load_config
 from .evaluation import default_cases_path, print_report, run_evaluation
-from .providers import APIProvider, Provider, command_system_prompt, download_default_model, local_provider, message_content, message_usage
+from .providers import APIProvider, Provider, command_system_prompt, download_default_model, local_provider, message_content, message_timing, message_usage
 from .schema import Plan, PlanError, default_shell, parse_plan
 
 
@@ -41,6 +42,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--json", action="store_true", help="输出结构化计划")
     result.add_argument("--yes", action="store_true", help="跳过普通确认")
     result.add_argument("--explain", action="store_true", help="显示额外计划信息")
+    result.add_argument("--timing", action="store_true", help="显示配置、模型调用和解析耗时")
     result.add_argument("--lang", choices=["zh", "en"], help="界面语言")
     result.add_argument("--config", type=Path, help="指定配置文件")
     group = result.add_mutually_exclusive_group()
@@ -64,14 +66,30 @@ def provider_for(config: Config, force_local: bool, force_api: bool, offline: bo
 
 
 def plan_request(provider: Provider, request: str, platform: str, language: str) -> Plan:
+    started = time.perf_counter()
+    prepare_started = started
     shell = current_shell(platform)
     messages = [
         {"role": "system", "content": command_system_prompt(platform, shell, language)},
         {"role": "user", "content": request},
     ]
-    message = provider.complete(messages, max_tokens=256)
+    # A valid plan is compact JSON; keeping the cap low limits accidental
+    # explanations/reasoning while leaving room for paths and assumptions.
+    prepare_ms = (time.perf_counter() - prepare_started) * 1000
+    llm_started = time.perf_counter()
+    message = provider.complete(messages, max_tokens=128)
+    llm_ms = (time.perf_counter() - llm_started) * 1000
+    parse_started = time.perf_counter()
     plan = parse_plan(message_content(message), platform, language)
+    parse_ms = (time.perf_counter() - parse_started) * 1000
     plan.token_usage = message_usage(message)
+    plan.timing_ms = {
+        "prepare_ms": round(prepare_ms, 3),
+        "llm_ms": round(llm_ms, 3),
+        **(message_timing(message) or {}),
+        "parse_ms": round(parse_ms, 3),
+        "planning_ms": round((time.perf_counter() - started) * 1000, 3),
+    }
     return plan
 
 
@@ -99,6 +117,30 @@ def show_token_usage(usage: Optional[dict], language: str) -> None:
         print("Tokens: usage was not returned by the provider")
 
 
+def show_timing(timing: Optional[dict], language: str) -> None:
+    if not timing:
+        return
+    labels = (
+        ("config_ms", "配置", "config"),
+        ("provider_init_ms", "初始化", "init"),
+        ("prepare_ms", "准备", "prepare"),
+        ("llm_ms", "LLM", "LLM"),
+        ("api_roundtrip_ms", "API 往返", "API roundtrip"),
+        ("response_decode_ms", "响应解析", "response decode"),
+        ("parse_ms", "解析", "parse"),
+        ("planning_ms", "规划", "planning"),
+        ("total_ms", "总计", "total"),
+    )
+    parts = []
+    for key, zh, en in labels:
+        value = timing.get(key)
+        if isinstance(value, (int, float)):
+            parts.append(f"{zh} {value:.1f} ms" if language == "zh" else f"{en} {value:.1f} ms")
+    if parts:
+        separator = "，" if language == "zh" else ", "
+        print(("耗时：" if language == "zh" else "Timing: ") + separator.join(parts))
+
+
 def risk_label(risk: str, language: str) -> str:
     labels = {
         "zh": {"read_only": "只读", "write": "会写入文件", "high": "高风险操作"},
@@ -107,7 +149,7 @@ def risk_label(risk: str, language: str) -> str:
     return labels[language][risk]
 
 
-def show_plan(plan: Plan, language: str, explain: bool = False) -> None:
+def show_plan(plan: Plan, language: str, explain: bool = False, timing: bool = False) -> None:
     if language == "zh":
         print(f"意图：{plan.intent}")
         print(f"命令：{plan.command}")
@@ -117,6 +159,8 @@ def show_plan(plan: Plan, language: str, explain: bool = False) -> None:
         print(f"假设：{'；'.join(plan.assumptions)}")
         print(f"风险：{risk_label(plan.risk, language)}")
         show_token_usage(plan.token_usage, language)
+        if timing:
+            show_timing(plan.timing_ms, language)
     else:
         print(f"Intent: {plan.intent}")
         print(f"Command: {plan.command}")
@@ -126,6 +170,8 @@ def show_plan(plan: Plan, language: str, explain: bool = False) -> None:
         print(f"Assumptions: {'; '.join(plan.assumptions)}")
         print(f"Risk: {risk_label(plan.risk, language)}")
         show_token_usage(plan.token_usage, language)
+        if timing:
+            show_timing(plan.timing_ms, language)
 
 
 def copy_command(command: str, platform: str) -> None:
@@ -153,6 +199,8 @@ def finish_plan(plan: Plan, args: argparse.Namespace, language: str, platform: s
         prefix = "需要补充信息" if language == "zh" else "More information is needed"
         print(f"{prefix}：{plan.clarification}")
         show_token_usage(plan.token_usage, language)
+        if args.timing:
+            show_timing(plan.timing_ms, language)
         return 1
     if args.json:
         print(json.dumps(plan.to_dict(), ensure_ascii=False))
@@ -160,7 +208,7 @@ def finish_plan(plan: Plan, args: argparse.Namespace, language: str, platform: s
     if args.print_only:
         print(plan.command)
         return 0
-    show_plan(plan, language, args.explain)
+    show_plan(plan, language, args.explain, args.timing)
     if args.copy:
         try:
             copy_command(plan.command, platform)
@@ -214,16 +262,19 @@ def evaluate_command(argv: Sequence[str]) -> int:
     eval_parser.add_argument("--lang", choices=["zh", "en"])
     eval_parser.add_argument("--locale", action="append", choices=["zh", "en", "mixed"], help="只测指定语言，可重复")
     eval_parser.add_argument("--limit", type=int, help="只测前 N 条")
+    eval_parser.add_argument("--jobs", type=int, default=1, help="API 评估并发请求数（默认 1）")
     eval_parser.add_argument("--verbose", action="store_true")
     args = eval_parser.parse_args(argv)
     config = load_config(args.config)
     language = args.lang or config.language
     try:
         if args.local or (not args.api and config.provider.lower() == "local"):
+            if args.jobs > 1:
+                raise RuntimeError("本地模型评估暂不支持并发；请使用 `--jobs 1`")
             provider = local_provider(config, args.backend, args.model_path)
         else:
             provider = APIProvider(config, args.model, args.base_url)
-        result = run_evaluation(provider, args.cases, args.output, args.locale, args.limit, args.verbose)
+        result = run_evaluation(provider, args.cases, args.output, args.locale, args.limit, args.verbose, args.jobs)
     except (RuntimeError, ValueError, OSError) as exc:
         print(f"评估失败：{exc}" if language == "zh" else f"Evaluation failed: {exc}", file=sys.stderr)
         return 2
@@ -257,6 +308,7 @@ def model_command(argv: Sequence[str]) -> int:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    total_started = time.perf_counter()
     raw = list(sys.argv[1:] if argv is None else argv)
     if raw and raw[0] == "config":
         return config_command(raw[1:])
@@ -267,7 +319,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser().parse_args(raw)
     if args.copy and args.print_only:
         parser().error("`--copy` 与 `--print` 不能同时使用")
+    config_started = time.perf_counter()
     config = load_config(args.config)
+    config_ms = (time.perf_counter() - config_started) * 1000
     language = args.lang or config.language
     if not args.request:
         parser().print_help()
@@ -278,8 +332,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print("当前平台不受支持。", file=sys.stderr)
         return 2
     try:
+        provider_started = time.perf_counter()
         provider = provider_for(config, args.local, args.api, args.offline, args.backend, args.model_path)
+        provider_init_ms = (time.perf_counter() - provider_started) * 1000
         plan = plan_request(provider, request, platform, language)
+        if plan.timing_ms is not None:
+            plan.timing_ms = {
+                "config_ms": round(config_ms, 3),
+                "provider_init_ms": round(provider_init_ms, 3),
+                **plan.timing_ms,
+                "total_ms": round((time.perf_counter() - total_started) * 1000, 3),
+            }
     except (RuntimeError, PlanError, OSError) as exc:
         prefix = "规划失败" if language == "zh" else "Planning failed"
         print(f"{prefix}：{exc}", file=sys.stderr)

@@ -5,10 +5,11 @@ import math
 import platform
 import statistics
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from .providers import Provider, extract_tool_call, message_usage
+from .providers import Provider, extract_tool_call, message_timing, message_usage
 
 
 TOOLS: List[Dict[str, Any]] = [
@@ -24,10 +25,15 @@ TOOLS: List[Dict[str, Any]] = [
 OPENAI_TOOLS = [{"type": "function", "function": tool} for tool in TOOLS]
 
 SYSTEM_PROMPT = (
-    "You are the dox tool router. Select at most one declared tool and copy all "
-    "argument values from explicit user evidence. Do not invent defaults. If the "
-    "request is unsupported, missing required arguments, negated, or asks to "
-    "delete a root/current directory, return no tool call. Never explain."
+    "你是 dox 工具路由器。最多选择一个工具。只有用户明确提供了工具 schema "
+    "中每一个 required 参数时才可调用；缺少任意参数必须不调用。禁止把未提及的 "
+    "destination 推断为 .、当前目录或源文件所在目录。English: Call a tool only "
+    "if every required argument is explicitly present. Never default a missing "
+    "destination to . or the current/source directory. Return no tool call for "
+    "unsupported, negated, irrelevant, or root/current-directory deletion requests. "
+    "参数值必须逐字复制，不能删除、翻译或改写路径的任何部分，包括中文“我的”。"
+    "Copy argument values verbatim; never drop, translate, or rewrite a path segment. "
+    "Do not reason or explain; respond immediately."
 )
 
 
@@ -79,6 +85,50 @@ def percentile(values: Sequence[float], quantile: float) -> float:
     return ordered[max(0, min(len(ordered) - 1, index))]
 
 
+def _evaluate_case(provider: Provider, case: Dict[str, Any]) -> Dict[str, Any]:
+    """Run one case; kept separate so API cases can run concurrently."""
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": case["request"]},
+    ]
+    start = time.perf_counter()
+    error = None
+    message: Dict[str, Any] = {}
+    try:
+        # Tool calls only need a short function name and argument object. A
+        # smaller cap prevents a model from spending time on explanations.
+        message = provider.complete(messages, OPENAI_TOOLS, max_tokens=64)
+        actual = extract_tool_call(message)
+        usage = message_usage(message)
+        provider_timing = message_timing(message)
+    except Exception as exc:  # Per-case errors belong in the report.
+        actual = None
+        usage = None
+        provider_timing = None
+        error = str(exc)
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    tool_exact, args_exact, critical = evaluate_call(actual, case)
+    if error is not None:
+        # A failed request is not evidence that the model correctly chose
+        # NO_CALL, even when the expected result is a refusal.
+        tool_exact = False
+        args_exact = False
+    return {
+        **case,
+        "elapsed_ms": round(elapsed_ms, 3),
+        "actual": actual,
+        "token_usage": usage,
+        "timing_ms": {
+            "request_ms": round(elapsed_ms, 3),
+            **(provider_timing or {}),
+        },
+        "tool_exact": tool_exact,
+        "args_exact": args_exact,
+        "critical_false_call": critical,
+        "error": error,
+    }
+
+
 def run_evaluation(
     provider: Provider,
     cases_path: Path,
@@ -86,6 +136,7 @@ def run_evaluation(
     locales: Optional[Iterable[str]] = None,
     limit: Optional[int] = None,
     verbose: bool = False,
+    jobs: int = 1,
 ) -> Dict[str, Any]:
     cases = load_cases(cases_path)
     locale_set = {item.lower() for item in locales or []}
@@ -95,52 +146,38 @@ def run_evaluation(
         cases = cases[: max(limit, 0)]
     if not cases:
         raise ValueError("过滤后没有评估用例")
+    if jobs < 1:
+        raise ValueError("评估并发数必须大于 0")
 
-    rows = []
-    for index, case in enumerate(cases, 1):
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": case["request"]},
-        ]
-        start = time.perf_counter()
-        error = None
-        message: Dict[str, Any] = {}
-        try:
-            message = provider.complete(messages, OPENAI_TOOLS, max_tokens=96)
-            actual = extract_tool_call(message)
-            usage = message_usage(message)
-        except Exception as exc:  # Per-case errors belong in the report.
-            actual = None
-            usage = None
-            error = str(exc)
-        elapsed_ms = (time.perf_counter() - start) * 1000
-        tool_exact, args_exact, critical = evaluate_call(actual, case)
-        if error is not None:
-            # A failed request is not evidence that the model correctly chose
-            # NO_CALL, even when the expected result is a refusal.
-            tool_exact = False
-            args_exact = False
-        row = {
-            **case,
-            "elapsed_ms": round(elapsed_ms, 3),
-            "actual": actual,
-            "token_usage": usage,
-            "tool_exact": tool_exact,
-            "args_exact": args_exact,
-            "critical_false_call": critical,
-            "error": error,
-        }
-        rows.append(row)
-        if verbose:
-            mark = "✓" if tool_exact and (case.get("class") != "normal" or args_exact) else "✗"
-            print(f"[{index:>3}/{len(cases)}] {mark} {case['id']:<24} {elapsed_ms:>8.1f}ms")
+    wall_start = time.perf_counter()
+    if jobs == 1:
+        rows = [_evaluate_case(provider, case) for case in cases]
+    else:
+        # Preserve input order in the report even though requests finish out
+        # of order. This keeps diffs and accuracy comparisons deterministic.
+        with ThreadPoolExecutor(max_workers=jobs, thread_name_prefix="dox-eval") as executor:
+            rows = list(executor.map(lambda item: _evaluate_case(provider, item), cases))
+
+    if verbose:
+        for index, row in enumerate(rows, 1):
+            mark = "✓" if row["tool_exact"] and (row.get("class") != "normal" or row["args_exact"]) else "✗"
+            print(f"[{index:>3}/{len(rows)}] {mark} {row['id']:<24} {row['elapsed_ms']:>8.1f}ms")
 
     normal = [row for row in rows if row.get("class") == "normal"]
     latencies = [row["elapsed_ms"] for row in rows]
+    api_roundtrips = [
+        row["timing_ms"]["api_roundtrip_ms"]
+        for row in rows
+        if isinstance(row.get("timing_ms", {}).get("api_roundtrip_ms"), (int, float))
+    ]
     token_totals = {
         key: sum((row.get("token_usage") or {}).get(key) or 0 for row in rows)
         for key in ("input_tokens", "output_tokens", "total_tokens")
     }
+    if any("reasoning_tokens" in (row.get("token_usage") or {}) for row in rows):
+        token_totals["reasoning_tokens"] = sum(
+            (row.get("token_usage") or {}).get("reasoning_tokens") or 0 for row in rows
+        )
     summary = {
         "provider": provider.name,
         "model": getattr(provider, "model", None) or getattr(provider, "model_name", None),
@@ -153,12 +190,20 @@ def run_evaluation(
         "critical_false_calls": sum(row["critical_false_call"] for row in rows),
         "errors": sum(row["error"] is not None for row in rows),
         "token_usage": token_totals,
+        "jobs": jobs,
+        "evaluation_ms": round((time.perf_counter() - wall_start) * 1000, 3),
         "latency_ms": {
             "p50": round(statistics.median(latencies), 3),
             "p95": round(percentile(latencies, 0.95), 3),
             "mean": round(statistics.mean(latencies), 3),
         },
     }
+    if api_roundtrips:
+        summary["api_roundtrip_ms"] = {
+            "p50": round(statistics.median(api_roundtrips), 3),
+            "p95": round(percentile(api_roundtrips, 0.95), 3),
+            "mean": round(statistics.mean(api_roundtrips), 3),
+        }
     result = {"summary": summary, "rows": rows}
     if output:
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -186,8 +231,14 @@ def print_report(result: Dict[str, Any], language: str = "zh") -> None:
     print(f"Request errors          {summary['errors']}")
     tokens = summary.get("token_usage") or {}
     print(f"Tokens input / output   {tokens.get('input_tokens', 0)} / {tokens.get('output_tokens', 0)}")
+    if tokens.get("reasoning_tokens"):
+        print(f"Reasoning tokens        {tokens['reasoning_tokens']}")
     latency = summary["latency_ms"]
     print(f"Latency p50 / p95       {latency['p50']:.1f} / {latency['p95']:.1f} ms")
+    if summary.get("api_roundtrip_ms"):
+        api_latency = summary["api_roundtrip_ms"]
+        print(f"API roundtrip p50/p95   {api_latency['p50']:.1f} / {api_latency['p95']:.1f} ms")
+    print(f"Wall time / jobs        {summary['evaluation_ms']:.1f} ms / {summary['jobs']}")
 
     failures = [row for row in rows if not row["tool_exact"] or (row.get("class") == "normal" and not row["args_exact"]) or row["critical_false_call"] or row["error"]]
     if failures:
