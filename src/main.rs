@@ -204,7 +204,7 @@ fn main() -> ExitCode {
 
     let request = options.request.join(" ");
     let platform = Platform::current();
-    if options.offline || options.local || config.provider == "local" {
+    if options.offline || options.local || (!options.api && config.provider == "local") {
         match language {
             Language::Chinese => eprintln!(
                 "当前版本尚未接入本地模型 Provider；请移除 `--offline`/`--local`，或配置 API Provider。\n"
@@ -962,6 +962,7 @@ enum ConfigScope {
 
 fn run_config_command(arguments: &[String]) -> ExitCode {
     let mut scope = ConfigScope::Local;
+    let mut scope_explicit = false;
     let mut explicit_path = None;
     let mut list = false;
     let mut unset = false;
@@ -969,9 +970,18 @@ fn run_config_command(arguments: &[String]) -> ExitCode {
     let mut index = 0;
     while index < arguments.len() {
         match arguments[index].as_str() {
-            "--global" => scope = ConfigScope::Global,
-            "--local" => scope = ConfigScope::Local,
-            "--system" => scope = ConfigScope::System,
+            "--global" => {
+                scope = ConfigScope::Global;
+                scope_explicit = true;
+            }
+            "--local" => {
+                scope = ConfigScope::Local;
+                scope_explicit = true;
+            }
+            "--system" => {
+                scope = ConfigScope::System;
+                scope_explicit = true;
+            }
             "--list" | "-l" => list = true,
             "--unset" => unset = true,
             "--file" => {
@@ -997,12 +1007,7 @@ fn run_config_command(arguments: &[String]) -> ExitCode {
         return config_error("无法确定配置文件路径");
     };
     if list {
-        let values = if matches!(
-            scope,
-            ConfigScope::Local | ConfigScope::Global | ConfigScope::System
-        ) && path == local_config_path()
-            && explicit_path.is_none()
-        {
+        let values = if !scope_explicit && explicit_path.is_none() && path == local_config_path() {
             let mut merged = BTreeMap::new();
             if let Some(system) = system_config_path() {
                 merged.extend(read_config_map(&system));
@@ -1032,7 +1037,11 @@ fn run_config_command(arguments: &[String]) -> ExitCode {
     } else if positional.len() == 2 {
         values.insert(key, positional[1].clone());
     } else {
-        let values = load_config_values(explicit_path.as_deref());
+        let values = if scope_explicit || explicit_path.is_some() {
+            read_config_map(&path)
+        } else {
+            load_config_values(None)
+        };
         if let Some(value) = values.get(&key) {
             println!("{value}");
             return ExitCode::SUCCESS;
