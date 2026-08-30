@@ -1,20 +1,20 @@
-# dox MVP 设计文档
+# qsay MVP 设计文档
 
 状态：Draft v0.2
 
 日期：2026-08-30
 
-产品名称：dox
+产品名称：qsay
 
 ## 1. 产品定义
 
-dox 是一个轻量、本地优先的自然语言命令路由器。用户用一句中文或英文描述终端任务，模型负责理解意图和提取参数；确定性代码负责结构校验、平台适配、风险升级、确认和执行。
+qsay 是一个轻量、本地优先的自然语言命令路由器。用户用一句中文或英文描述终端任务，模型负责理解意图和提取参数；确定性代码负责结构校验、平台适配、风险升级、确认和执行。
 
 ```text
-dox "解压 backup.tar 到 ./backup"
+qsay "解压 backup.tar 到 ./backup"
 ```
 
-首版支持 macOS、Linux 和 Windows。Windows 仅支持 PowerShell，不支持 `cmd.exe`。命令名使用 `dox`；`do` 在常见 Shell 中存在语法冲突，不作为可执行文件名。
+首版支持 macOS、Linux 和 Windows。Windows 仅支持 PowerShell，不支持 `cmd.exe`。命令名使用 `qsay`；`do` 在常见 Shell 中存在语法冲突，不作为可执行文件名。
 
 ## 2. 不可妥协的原则
 
@@ -90,7 +90,7 @@ dox "解压 backup.tar 到 ./backup"
 MVP 全部使用 Python 3.9+ 实现：
 
 ```text
-dox/
+qsay/
   cli.py          CLI、确认和执行
   config.py       Git 风格分层配置
   providers.py    本地与 API Provider
@@ -156,48 +156,48 @@ Provider.complete(messages, tools?, max_tokens) -> assistant message
 
 MVP 默认采用进程内 `llama-cpp-python`：概念和安装路径最简单，不引入后台进程生命周期、端口、IPC 或服务权限。
 
-同时保留 `server` backend 作为可选常驻方案，它已经能连接任何 OpenAI-compatible 本地服务。暂不自研 `doxd`，因为它会增加安装、升级、崩溃恢复和 Windows 服务管理成本。若冷启动实测成为主要体验瓶颈，再把受控的本地 daemon 作为独立里程碑。
+同时保留 `server` backend 作为可选常驻方案，它已经能连接任何 OpenAI-compatible 本地服务。暂不自研 `qsayd`，因为它会增加安装、升级、崩溃恢复和 Windows 服务管理成本。若冷启动实测成为主要体验瓶颈，再把受控的本地 daemon 作为独立里程碑。
 
 ### 6.3 模型分发
 
-开发阶段的 `dox model download` 使用公开的社区 Q4_K_M GGUF。正式发行不能仅依赖社区转换，必须从 Qwen 官方 Apache-2.0 权重构建发布文件，并固定来源、版本和 SHA-256。模型不嵌入 Python wheel，以免基础安装膨胀；用户可以下载默认模型，也可以配置本地路径。
+开发阶段的 `qsay model download` 使用公开的社区 Q4_K_M GGUF。正式发行不能仅依赖社区转换，必须从 Qwen 官方 Apache-2.0 权重构建发布文件，并固定来源、版本和 SHA-256。模型不嵌入 Python wheel，以免基础安装膨胀；用户可以下载默认模型，也可以配置本地路径。
 
 ## 7. 配置
 
 配置方式向 Git 学习。优先级为：系统级 < 全局 < 当前目录 < 命令行。
 
-- macOS/Linux 系统级：`/etc/doxconfig`
-- Windows 系统级：`%PROGRAMDATA%\dox\config`
-- macOS/Linux 全局：`~/.doxconfig`
-- Windows 全局：`%USERPROFILE%\.doxconfig`
-- 当前目录：`./.dox/config`
+- macOS/Linux 系统级：`/etc/qsayconfig`
+- Windows 系统级：`%PROGRAMDATA%\qsay\config`
+- macOS/Linux 全局：`~/.qsayconfig`
+- Windows 全局：`%USERPROFILE%\.qsayconfig`
+- 当前目录：`./.qsay/config`
 
 ```bash
-dox config --global llm.provider api
-dox config --global llm.base-url https://api.openai.com/v1
-dox config --global llm.model gpt-4o-mini
-dox config --global llm.api-key YOUR_API_KEY
+qsay config --global llm.provider api
+qsay config --global llm.base-url https://api.openai.com/v1
+qsay config --global llm.model gpt-4o-mini
+qsay config --global llm.api-key YOUR_API_KEY
 ```
 
-API 尚未配置时，dox 必须打印可直接复制的配置命令，不自动回退到本地模型。API Key 会明文保存在配置文件中，文件权限应限制为当前用户且不应提交到公共仓库。离线模式显式配置：
+API 尚未配置时，qsay 必须打印可直接复制的配置命令，不自动回退到本地模型。API Key 会明文保存在配置文件中，文件权限应限制为当前用户且不应提交到公共仓库。离线模式显式配置：
 
 ```bash
-dox config --global llm.provider local
-dox config --global local.backend auto
-dox config --global local.model-path /path/to/Qwen3-0.6B-Q4_K_M.gguf
-dox config --global core.language zh
-dox config --list
+qsay config --global llm.provider local
+qsay config --global local.backend auto
+qsay config --global local.model-path /path/to/Qwen3-0.6B-Q4_K_M.gguf
+qsay config --global core.language zh
+qsay config --list
 ```
 
-macOS/Linux 的全局配置文件是 `~/.doxconfig`，Windows 是 `%USERPROFILE%\.doxconfig`；项目级文件是当前目录的 `.dox/config`。文件只在用户执行对应的配置写入命令后创建。
+macOS/Linux 的全局配置文件是 `~/.qsayconfig`，Windows 是 `%USERPROFILE%\.qsayconfig`；项目级文件是当前目录的 `.qsay/config`。文件只在用户执行对应的配置写入命令后创建。
 
 ## 8. 评估模式
 
 命令：
 
 ```bash
-dox eval --local --output reports/qwen-local.json --verbose
-dox eval --api --output reports/api.json --verbose
+qsay eval --local --output reports/qwen-local.json --verbose
+qsay eval --api --output reports/api.json --verbose
 ```
 
 本地模型和 API 使用相同的 OpenAI function tool Schema 和 JSONL 用例。首版报表包含：
@@ -246,7 +246,7 @@ MVP 只加载内置能力和用户本地文件。这里的“远程 Adapter 包�
 
 ```text
 第一次模型调用：识别候选可执行文件和所需子命令
-  → dox 验证可执行文件来自 PATH
+  → qsay 验证可执行文件来自 PATH
   → 以 argv、超时、输出长度上限运行 tool --help / subcommand --help
   → 第二次模型调用：基于用户请求和帮助文本生成结构化计划
 ```
@@ -279,7 +279,7 @@ MVP 只加载内置能力和用户本地文件。这里的“远程 Adapter 包�
 - OpenAI-compatible API Provider
 - 命令计划展示、复制、确认和执行
 - 中文默认、英文支持、Windows PowerShell
-- `dox eval` 终端与 JSON 报表
+- `qsay eval` 终端与 JSON 报表
 
 ### P0.5：安装与质量收敛
 
@@ -297,19 +297,19 @@ MVP 只加载内置能力和用户本地文件。这里的“远程 Adapter 包�
 
 ### P2：性能与扩展
 
-- 根据实测决定是否提供 `doxd`
+- 根据实测决定是否提供 `qsayd`
 - 声明式本地 Adapter
 - 经过签名和审核的远程 Adapter 仓库
 - 受限的当前会话命令修正
 
 ### P3：多任务自然语言路由（TODO）
 
-目标是让 dox 在同一个自然语言入口中路由三类高频任务：命令生成、翻译和一句话问答。该阶段不改变命令执行的确认与风险边界。
+目标是让 qsay 在同一个自然语言入口中路由三类高频任务：命令生成、翻译和一句话问答。该阶段不改变命令执行的确认与风险边界。
 
 - [ ] 统一响应协议，增加 `type: command|translate|answer`；翻译和问答使用 `text`，命令使用 `command` 与 `risk`
 - [ ] 默认自动判断任务类型，保持一次模型请求；不采用关键词规则承担意图识别
 - [ ] 增加可选的显式覆盖：`--task command|translate|answer`
-- [ ] 提供 `dox translate` 和 `dox ask` 作为可选语法糖，但不要求用户记忆或使用它们
+- [ ] 提供 `qsay translate` 和 `qsay ask` 作为可选语法糖，但不要求用户记忆或使用它们
 - [ ] 翻译支持 `--to` 指定目标语言，无法判断时提出澄清问题
 - [ ] 为三类任务使用独立的短 Prompt、输出上限和展示逻辑，避免问答或翻译进入命令确认流程
 - [ ] 约定 `--print` 输出纯文本、`--json` 输出统一结构，并保留 token 与耗时统计
@@ -347,4 +347,4 @@ MVP 只加载内置能力和用户本地文件。这里的“远程 Adapter 包�
 - Q4_K_M 正式转换的最终模型文件、校验和和分发地址
 - 三个平台最省心的安装包形式，尤其是 Windows 的 llama.cpp 依赖
 - Qwen3-0.6B 达不到完整质量门槛时，是优化提示、微调路由模型，还是把复杂请求升级到 API
-- 是否以及何时自研常驻 `doxd`
+- 是否以及何时自研常驻 `qsayd`

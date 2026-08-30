@@ -1,4 +1,4 @@
-# dox 本地小模型调研
+# qsay 本地小模型调研
 
 状态：Research v0.2
 日期：2026-08-30
@@ -6,7 +6,7 @@
 
 ## 1. 任务与评估标准
 
-dox 的本地模型不是聊天模型，也不是需要长上下文的 coding agent。它只需要在很短的请求内完成：
+qsay 的本地模型不是聊天模型，也不是需要长上下文的 coding agent。它只需要在很短的请求内完成：
 
 ```text
 自然语言请求 → 工具/意图选择 → 参数槽位提取 → 拒绝或追问
@@ -37,7 +37,7 @@ Needle 2 是 Cactus Compute 发布的 45M 参数工具调用、设备控制和�
 - 未声明工具能完成的请求返回空调用，而不是自由文本答案
 - 缺少证据的可选参数省略，不主动猜测
 
-这些特征与 dox 的“意图识别 + 路由 + 拒绝”需求高度匹配，尤其是工具检索、约束解码和置信度门控。
+这些特征与 qsay 的“意图识别 + 路由 + 拒绝”需求高度匹配，尤其是工具检索、约束解码和置信度门控。
 
 官方资料：
 
@@ -45,7 +45,7 @@ Needle 2 是 Cactus Compute 发布的 45M 参数工具调用、设备控制和�
 - [Needle API 与行为契约](https://github.com/cactus-compute/needle/blob/main/doc/apis.md)
 - [Needle 2 模型仓库](https://huggingface.co/Cactus-Compute/needle2)
 
-### 2.2 对 dox 的直接映射
+### 2.2 对 qsay 的直接映射
 
 每个 Adapter 可以映射成 Needle 工具 Schema：
 
@@ -64,7 +64,7 @@ Needle 2 是 Cactus Compute 发布的 45M 参数工具调用、设备控制和�
 }
 ```
 
-模型返回 `archive_extract(source, destination)`，然后由 dox 的 Adapter 根据平台渲染为 tar、7z 或 PowerShell 命令。模型不返回或执行任意 Shell 字符串。
+模型返回 `archive_extract(source, destination)`，然后由 qsay 的 Adapter 根据平台渲染为 tar、7z 或 PowerShell 命令。模型不返回或执行任意 Shell 字符串。
 
 ### 2.3 实测结果：中文不合格
 
@@ -95,7 +95,7 @@ Needle 2 是 Cactus Compute 发布的 45M 参数工具调用、设备控制和�
 1. Needle 2 base 的中文能力不是“略弱”，而是会出现高置信误路由，无法通过 confidence 阈值修补。
 2. 英文也会在缺参时捏造参数，例如 `Extract backup.tar` 将 destination 设为 `backup.tar`，confidence 为 1.0；否定句也出现高置信调用。
 
-因此 Needle 2 base **不能成为 dox 的中文默认模型，也不能单独承担拒绝和安全决策**。它的速度、尺寸和 Grammar 仍然有价值，后续只保留“用 dox 中英数据专门微调/LoRA”的研究支线，而且必须与 Qwen 路线按相同用例复测。
+因此 Needle 2 base **不能成为 qsay 的中文默认模型，也不能单独承担拒绝和安全决策**。它的速度、尺寸和 Grammar 仍然有价值，后续只保留“用 qsay 中英数据专门微调/LoRA”的研究支线，而且必须与 Qwen 路线按相同用例复测。
 
 ### 2.4 工程接入结论
 
@@ -105,21 +105,21 @@ Needle 2 是 Cactus Compute 发布的 45M 参数工具调用、设备控制和�
 2. `mlx`：Apple Silicon 的显式加速选项。
 3. `server`：连接本机 OpenAI-compatible 常驻服务，避免每次 CLI 调用重新加载模型。
 
-暂不自研 daemon。只有冷启动和连续调用数据证明它值得额外的安装、进程生命周期和 Windows 服务管理成本时，才考虑 `doxd`。
+暂不自研 daemon。只有冷启动和连续调用数据证明它值得额外的安装、进程生命周期和 Windows 服务管理成本时，才考虑 `qsayd`。
 
 ## 3. 对比候选
 
-| 候选 | 规模/定位 | 结构化工具调用 | CPU 与分发 | 中文风险 | dox 建议 |
+| 候选 | 规模/定位 | 结构化工具调用 | CPU 与分发 | 中文风险 | qsay 建议 |
 |---|---|---|---|---|---|
 | Needle 2 | 45M，专门工具调用/抽取 | 原生 Grammar、检索、confidence | 约 14MB 引擎、约 38–45MB 实测 | 中文高置信误调用 | 排除 base；保留专项微调支线 |
 | Qwen3 0.6B | 多语言通用小模型 | 原生 Qwen tool-call 模板，关闭 thinking | MLX 4-bit 335MB；GGUF Q4_K_M 378MiB | 共享用例中最好 | 当前首选 PoC，但 CPU 路径慢 |
 | LFM2.5 1.2B Instruct | 明确支持中英和 function calling | Pythonic tool call/JSON | Q4_K_M 697MiB；CPU p50 2.6s | 多工具混淆严重 | 当前排除默认候选 |
-| FunctionGemma 270M | 专门函数调用的可微调底座 | 自有 function call token/template | 4-bit 约 151MB MLX / 241MiB GGUF | base 中文未证明 | 值得做 dox 专项微调，不用 base 直出 |
+| FunctionGemma 270M | 专门函数调用的可微调底座 | 自有 function call token/template | 4-bit 约 151MB MLX / 241MiB GGUF | base 中文未证明 | 值得做 qsay 专项微调，不用 base 直出 |
 | Hammer2.0 0.5B | Qwen2.5-0.5B 函数调用微调 | 作者自定义 JSON 提示 | Q4_K_M 379MiB；CPU p50 1.1s | 中文参数不稳 | 微调路线对照，不作默认 |
 | Granite 3.2 2B | Apache-2.0，多语言、function calling | 模板/Grammar | 约 2B，明显更重 | 明确支持中文 | 质量 fallback，尚未实测 |
 | xLAM 1B | 专门函数调用 | 函数调用训练 | 约 1B | 中文未证明 | 仓库访问/许可确认后再测 |
 
-FunctionGemma 官方明确说明 270M base 旨在针对具体函数调用任务微调，而不是直接作为通用对话模型。它的官方仓库需要接受 Gemma 许可；社区转换权重虽然可下载，发布时仍受 Gemma 条款约束。LFM2.5 使用 LFM Open License v1.0，商业使用对年收入 1,000 万美元及以上的法律实体有限制，不适合作为 dox 无条件默认分发模型。
+FunctionGemma 官方明确说明 270M base 旨在针对具体函数调用任务微调，而不是直接作为通用对话模型。它的官方仓库需要接受 Gemma 许可；社区转换权重虽然可下载，发布时仍受 Gemma 条款约束。LFM2.5 使用 LFM Open License v1.0，商业使用对年收入 1,000 万美元及以上的法律实体有限制，不适合作为 qsay 无条件默认分发模型。
 
 ### 3.1 多模型统一实测
 
@@ -130,13 +130,13 @@ FunctionGemma 官方明确说明 270M base 旨在针对具体函数调用任务�
 | Needle 2 base / 原生 CPU engine | 约 14MB | 57.6% | 26.3% | 2 | 304 / 366ms |
 | Qwen3-0.6B 4-bit / MLX | 335MB | **87.9%** | **94.7%** | 2 | **782 / 890ms** |
 | Qwen3-0.6B Q4_K_M / llama.cpp CPU | 378MiB | 66.7% | 89.5% | 5 | 2615 / 3122ms |
-| Qwen3-0.6B Q4_K_M / 当前 `dox eval` | 378MiB | 72.7% | 94.7% | 4 | 1849 / 1963ms |
+| Qwen3-0.6B Q4_K_M / 当前 `qsay eval` | 378MiB | 72.7% | 94.7% | 4 | 1849 / 1963ms |
 | LFM2.5-1.2B Q4_K_M / llama.cpp CPU | 697MiB | 39.4% | 52.6% | 2 | 2609 / 3203ms |
 | Hammer2.0-0.5B Q4_K_M / llama.cpp CPU | 379MiB | 69.7% | 47.4% | 4 | 1062 / 1279ms |
 
 Qwen 的 2 个 critical case 都是根目录/当前目录删除请求产生 `remove_path` 调用；这类路径可以且必须由确定性安全层拒绝。Qwen 还会在少数缺参请求中自行补 `.` 或 `backup`，因此模型返回后仍要做参数证据校验和追问，不能直接执行。
 
-同一 Qwen 权重在 MLX 与 GGUF/llama.cpp 的分数差异很大，原因不只可能是量化，还包括 chat-template、采样、parser 和 backend 版本。GGUF 的 `/no_think` 必须放在 user turn；即使如此，纯 CPU p50 仍约 2.6 秒、进程最大 RSS 探针约 758MiB，暂时不符合 dox 的“即时命令路由”体验。生产选择不能只写“用 Qwen”，必须锁定权重、量化、模板、runtime 和输出约束的完整组合。
+同一 Qwen 权重在 MLX 与 GGUF/llama.cpp 的分数差异很大，原因不只可能是量化，还包括 chat-template、采样、parser 和 backend 版本。GGUF 的 `/no_think` 必须放在 user turn；即使如此，纯 CPU p50 仍约 2.6 秒、进程最大 RSS 探针约 758MiB，暂时不符合 qsay 的“即时命令路由”体验。生产选择不能只写“用 Qwen”，必须锁定权重、量化、模板、runtime 和输出约束的完整组合。
 
 主 CLI 接入后的同一 33 条用例复测为 72.7% 工具 exact、94.7% 正常参数 exact、4 次 critical false-call，p50 约 1.85 秒。分数变化来自新版 runtime、提示和更严格的 exact 参数口径，不能与旧实验脚本当作完全相同实验。四个关键错误包括无关英文请求、中文/英文否定删除以及根目录删除，说明确定性拒绝层仍是上线前置条件。
 
@@ -162,13 +162,13 @@ Schema 校验 → Adapter 渲染 → 依赖检查 → 风险扫描 → 用户确
 当前部署形态：
 
 ```text
-dox                         Python 核心 CLI
-dox[local]                  llama-cpp-python 进程内后端
-dox --backend mlx           Apple Silicon 可选后端
-dox --backend server        本机常驻服务后端
+qsay                         Python 核心 CLI
+qsay[local]                  llama-cpp-python 进程内后端
+qsay --backend mlx           Apple Silicon 可选后端
+qsay --backend server        本机常驻服务后端
 ```
 
-基础 `dox` 不包含模型文件，也可以只连接 API。离线机器可在联网机器下载后复制 GGUF；运行时不自动联网。
+基础 `qsay` 不包含模型文件，也可以只连接 API。离线机器可在联网机器下载后复制 GGUF；运行时不自动联网。
 
 ## 5. 最小评测方案
 
@@ -199,13 +199,13 @@ dox --backend server        本机常驻服务后端
 ### 5.4 决策门
 
 - Qwen3-0.6B 在 1,000+ 用例达到中文核心意图 ≥ 95%、英文 ≥ 95%、模型 critical false-call 可被确定性安全层 100% 阻断：进入默认本地 Provider 候选
-- Qwen 未达标：使用 dox 领域数据 LoRA，并与 FunctionGemma 专项微调比较；不通过关键词规则冒充模型能力
+- Qwen 未达标：使用 qsay 领域数据 LoRA，并与 FunctionGemma 专项微调比较；不通过关键词规则冒充模型能力
 - 100+ 工具目录路由下降：先用 embedding/模型检索缩到 top-k 工具，再由调用模型选择；检索本身也必须模型化，不写关键词意图规则
 - 所有本地候选均不达标：保留 API Provider，不为了离线承诺牺牲安全性
 
 ## 6. 当前结论
 
-本轮已经回答了最关键的问题：Needle 2 base 不支持达到 dox 要求的中文路由，且 confidence 不能防止高置信错误；LFM2.5-1.2B 和 Hammer2.0-0.5B 在该任务上不比 Qwen3 更好。产品现在默认使用 Qwen3-0.6B，但“默认”表示工程路线已确定，不表示质量已达发布门槛。MLX 组合仍是 Apple Silicon 上最有希望的性能选项，跨平台 GGUF 路线则必须继续改善拒绝准确率和冷启动体验。
+本轮已经回答了最关键的问题：Needle 2 base 不支持达到 qsay 要求的中文路由，且 confidence 不能防止高置信错误；LFM2.5-1.2B 和 Hammer2.0-0.5B 在该任务上不比 Qwen3 更好。产品现在默认使用 Qwen3-0.6B，但“默认”表示工程路线已确定，不表示质量已达发布门槛。MLX 组合仍是 Apple Silicon 上最有希望的性能选项，跨平台 GGUF 路线则必须继续改善拒绝准确率和冷启动体验。
 
 下一阶段不应把某个模型匆忙接入主 CLI，而是：
 
@@ -245,7 +245,7 @@ dox --backend server        本机常驻服务后端
 - “切换分支到 develop”正确生成 `git switch develop`；
 - “新建 develop 分支并切换”仍错误生成 `git switch develop`，遗漏 `-c`，并产生矛盾的 clarification。
 
-因此帮助检索成本本身可以很低，并能改善模型缺少的版本化命令知识，但小模型仍可能错误阅读明确文档。它适合作为未知/长尾工具的按需增强，不能替代 Adapter 和验证。实现时必须由 dox 白名单决定可执行文件和固定的 `--help`/子命令帮助参数，使用 argv、短超时、输出上限并按程序路径与版本缓存，禁止模型构造任意探测 Shell。
+因此帮助检索成本本身可以很低，并能改善模型缺少的版本化命令知识，但小模型仍可能错误阅读明确文档。它适合作为未知/长尾工具的按需增强，不能替代 Adapter 和验证。实现时必须由 qsay 白名单决定可执行文件和固定的 `--help`/子命令帮助参数，使用 argv、短超时、输出上限并按程序路径与版本缓存，禁止模型构造任意探测 Shell。
 
 ### 6.3 准确和速度优先的 Provider 策略
 

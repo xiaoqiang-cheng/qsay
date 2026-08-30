@@ -87,18 +87,18 @@ def render_config(values: Dict[str, str]) -> str:
 
 def system_path() -> Path:
     if os.name == "nt":
-        return Path(os.environ.get("PROGRAMDATA", "C:/ProgramData")) / "dox" / "config"
-    return Path("/etc/doxconfig")
+        return Path(os.environ.get("PROGRAMDATA", "C:/ProgramData")) / "qsay" / "config"
+    return Path("/etc/qsayconfig")
 
 
 def global_path() -> Path:
     if os.name == "nt":
-        return Path(os.environ.get("USERPROFILE", str(Path.home()))) / ".doxconfig"
-    return Path.home() / ".doxconfig"
+        return Path(os.environ.get("USERPROFILE", str(Path.home()))) / ".qsayconfig"
+    return Path.home() / ".qsayconfig"
 
 
 def local_path() -> Path:
-    return Path(".dox") / "config"
+    return Path(".qsay") / "config"
 
 
 def load_values(explicit: Optional[Path] = None) -> Dict[str, str]:
@@ -233,23 +233,23 @@ def config_command(argv: Iterable[str]) -> int:
 
 
 def _config_error(message: str) -> int:
-    print(f"dox config：{message}", file=sys.stderr)
+    print(f"qsay config：{message}", file=sys.stderr)
     return 2
 
 
 def print_config_help() -> None:
     print("""用法：
-  dox config [--global|--local|--system|--file PATH] KEY VALUE
-  dox config [--global|--local|--system|--file PATH] KEY
-  dox config --list
-  dox config --unset KEY
+  qsay config [--global|--local|--system|--file PATH] KEY VALUE
+  qsay config [--global|--local|--system|--file PATH] KEY
+  qsay config --list
+  qsay config --unset KEY
 
 示例：
-  dox config --global llm.provider api
-  dox config --global llm.base-url https://api.openai.com/v1
-  dox config --global llm.model gpt-4o-mini
-  dox config --global llm.api-key YOUR_API_KEY
-  dox config --global llm.provider local
-  dox config --global local.backend auto
-  dox config --global local.model-path /path/to/Qwen3-0.6B-Q4_K_M.gguf
-  dox config --global core.language zh""")
+  qsay config --global llm.provider api
+  qsay config --global llm.base-url https://api.openai.com/v1
+  qsay config --global llm.model gpt-4o-mini
+  qsay config --global llm.api-key YOUR_API_KEY
+  qsay config --global llm.provider local
+  qsay config --global local.backend auto
+  qsay config --global local.model-path /path/to/Qwen3-0.6B-Q4_K_M.gguf
+  qsay config --global core.language zh""")

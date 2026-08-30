@@ -27,7 +27,7 @@ TOOLS: List[Dict[str, Any]] = [
 OPENAI_TOOLS = [{"type": "function", "function": tool} for tool in TOOLS]
 
 SYSTEM_PROMPT = (
-    "你是 dox 工具路由器。最多选择一个工具。只有用户明确提供了工具 schema "
+    "你是 qsay 工具路由器。最多选择一个工具。只有用户明确提供了工具 schema "
     "中每一个 required 参数时才可调用；缺少任意参数必须不调用。禁止把未提及的 "
     "destination 推断为 .、当前目录或源文件所在目录。English: Call a tool only "
     "if every required argument is explicitly present. Never default a missing "
@@ -341,7 +341,7 @@ def run_task_evaluation(
 def print_task_report(result: Dict[str, Any], language: str = "zh") -> None:
     summary = result["summary"]
     rows = result["rows"]
-    title = "dox 文本任务评估" if language == "zh" else "dox text-task evaluation"
+    title = "qsay 文本任务评估" if language == "zh" else "qsay text-task evaluation"
     print(f"\n{title}")
     print("=" * len(title))
     print(f"Provider: {summary['provider']}")
@@ -373,7 +373,7 @@ def print_task_report(result: Dict[str, Any], language: str = "zh") -> None:
 def print_report(result: Dict[str, Any], language: str = "zh") -> None:
     summary = result["summary"]
     rows = result["rows"]
-    title = "dox 模型路由评估" if language == "zh" else "dox model-routing evaluation"
+    title = "qsay 模型路由评估" if language == "zh" else "qsay model-routing evaluation"
     print(f"\n{title}")
     print("=" * len(title))
     print(f"Provider: {summary['provider']}")

@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from dox.providers import APIProvider, chat_endpoint, extract_tool_call, is_qwen_model, normalize_usage, resolve_local_backend, suppress_native_output
-from dox.config import Config, load_values
+from qsay.providers import APIProvider, chat_endpoint, extract_tool_call, is_qwen_model, normalize_usage, resolve_local_backend, suppress_native_output
+from qsay.config import Config, load_values
 
 
 def test_chat_endpoint():
@@ -61,7 +61,7 @@ def test_auto_backend_is_cross_platform_llama_cpp():
 
 
 def test_suppresses_native_stderr_by_default(capfd, monkeypatch):
-    monkeypatch.delenv("DOX_LLAMA_LOG", raising=False)
+    monkeypatch.delenv("QSAY_LLAMA_LOG", raising=False)
     with suppress_native_output():
         os.write(2, b"native-noise\n")
     os.write(2, b"visible-error\n")
@@ -71,23 +71,23 @@ def test_suppresses_native_stderr_by_default(capfd, monkeypatch):
 
 
 def test_api_provider_explains_initial_configuration():
-    config = Config.from_values(load_values(Path("/missing-dox-config")))
+    config = Config.from_values(load_values(Path("/missing-qsay-config")))
     with pytest.raises(RuntimeError) as error:
         APIProvider(config)
     message = str(error.value)
-    assert "dox config --global llm.model" in message
-    assert "dox --local" in message
+    assert "qsay config --global llm.model" in message
+    assert "qsay --local" in message
 
 
 def test_api_provider_explains_missing_key(monkeypatch):
-    values = load_values(Path("/missing-dox-config"))
+    values = load_values(Path("/missing-qsay-config"))
     values["llm.model"] = "demo"
     values["llm.api-key"] = ""
     config = Config.from_values(values)
     # An environment variable must not be required or implicitly consumed.
-    monkeypatch.setenv("DOX_TEST_API_KEY", "secret")
+    monkeypatch.setenv("QSAY_TEST_API_KEY", "secret")
     with pytest.raises(RuntimeError) as error:
         APIProvider(config)
     message = str(error.value)
-    assert "dox config --global llm.api-key YOUR_API_KEY" in message
+    assert "qsay config --global llm.api-key YOUR_API_KEY" in message
     assert "环境变量" not in message

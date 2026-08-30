@@ -1,17 +1,17 @@
 from pathlib import Path
 
-from dox.config import Config, canonical_key, load_values, parse_config, read_config, render_config
+from qsay.config import Config, canonical_key, load_values, parse_config, read_config, render_config
 
 
 def test_defaults_to_api_with_local_qwen_available():
-    config = Config.from_values(load_values(Path("/definitely/missing/dox-config")))
+    config = Config.from_values(load_values(Path("/definitely/missing/qsay-config")))
     assert config.provider == "api"
     assert config.local_model == "Qwen3-0.6B"
     assert config.local_backend == "auto"
 
 
 def test_explicit_local_provider_overrides_api_default():
-    values = load_values(Path("/definitely/missing/dox-config"))
+    values = load_values(Path("/definitely/missing/qsay-config"))
     values["llm.provider"] = "local"
     assert Config.from_values(values).provider == "local"
 

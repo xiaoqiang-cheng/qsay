@@ -1,6 +1,6 @@
-# dox
+# qsay
 
-轻量、模型优先的自然语言命令路由器。输入一句话，dox 使用本地 Qwen3-0.6B 或 OpenAI-compatible API 生成结构化命令计划，展示风险并在确认后执行。
+轻量、模型优先的自然语言命令路由器。输入一句话，qsay 使用本地 Qwen3-0.6B 或 OpenAI-compatible API 生成结构化命令计划，展示风险并在确认后执行。
 
 当前实现已经全部迁移到 Python。默认 Provider 是 OpenAI-compatible API，以优先获得更高的命令准确率和更低延迟；本地 Qwen3-0.6B 是显式的离线选项。macOS、Linux 和 Windows 共用 GGUF + llama.cpp 路径，Apple Silicon 可以选择 MLX 加速。Windows 只支持 PowerShell，不支持 `cmd.exe`。
 
@@ -20,22 +20,22 @@ py -m venv .venv
 .venv\Scripts\python -m pip install -e ".[local,dev]"
 ```
 
-安装完成后可直接运行 `dox`。默认 API 模式不需要本地推理依赖，可执行 `python -m pip install -e .`；需要离线模式时再安装 `.[local]`。
+安装完成后可直接运行 `qsay`。默认 API 模式不需要本地推理依赖，可执行 `python -m pip install -e .`；需要离线模式时再安装 `.[local]`。
 
 ### 本地模型
 
 默认模型为 Qwen3-0.6B Q4_K_M GGUF：
 
 ```bash
-dox model path
+qsay model path
 python -m pip install huggingface-hub
-dox model download
+qsay model download
 ```
 
-`dox model download` 当前使用公开的社区 Q4_K_M 转换以减小包体。正式发行包会由项目从 Qwen 官方 Apache-2.0 权重自行转换并固定 SHA-256。也可以配置自己验证过的模型：
+`qsay model download` 当前使用公开的社区 Q4_K_M 转换以减小包体。正式发行包会由项目从 Qwen 官方 Apache-2.0 权重自行转换并固定 SHA-256。也可以配置自己验证过的模型：
 
 ```bash
-dox config --global local.model-path /path/to/Qwen3-0.6B-Q4_K_M.gguf
+qsay config --global local.model-path /path/to/Qwen3-0.6B-Q4_K_M.gguf
 ```
 
 ## 使用
@@ -43,17 +43,17 @@ dox config --global local.model-path /path/to/Qwen3-0.6B-Q4_K_M.gguf
 默认使用 API。首次使用先配置 OpenAI-compatible endpoint、模型名和 API Key：
 
 ```bash
-dox config --global llm.base-url https://api.openai.com/v1
-dox config --global llm.model gpt-4o-mini
-dox config --global llm.api-key "你的 API Key"
+qsay config --global llm.base-url https://api.openai.com/v1
+qsay config --global llm.model gpt-4o-mini
+qsay config --global llm.api-key "你的 API Key"
 ```
 
-未配置时，dox 会打印上述配置方法，不会自动回退到准确率未达门槛的本地模型。配置完成后：
+未配置时，qsay 会打印上述配置方法，不会自动回退到准确率未达门槛的本地模型。配置完成后：
 
 ```bash
-dox "解压 backup.tar 到 ./backup"
-dox --print "查找 src 下所有 rs 文件"
-dox --json "查看当前 git 状态"
+qsay "解压 backup.tar 到 ./backup"
+qsay --print "查找 src 下所有 rs 文件"
+qsay --json "查看当前 git 状态"
 ```
 
 常用选项：
@@ -81,30 +81,30 @@ dox --json "查看当前 git 状态"
 
 ```bash
 python -m pip install mlx-lm
-dox config --global local.backend mlx
-dox config --global local.model-path /path/to/qwen3-0.6b-mlx-4bit
+qsay config --global local.backend mlx
+qsay config --global local.model-path /path/to/qwen3-0.6b-mlx-4bit
 ```
 
 连接常驻本地服务可以避免每次 CLI 调用重新加载模型：
 
 ```bash
-dox config --global local.backend server
-dox config --global local.endpoint http://127.0.0.1:8080/v1
-dox config --global local.model Qwen3-0.6B
+qsay config --global local.backend server
+qsay config --global local.endpoint http://127.0.0.1:8080/v1
+qsay config --global local.model Qwen3-0.6B
 ```
 
-这是当前最值得继续优化的跨平台方案：dox 核心保持纯 Python 标准库，模型进程可以常驻；底层服务仍可由 llama.cpp 在 CPU、Metal、CUDA 或 Vulkan 上运行。
+这是当前最值得继续优化的跨平台方案：qsay 核心保持纯 Python 标准库，模型进程可以常驻；底层服务仍可由 llama.cpp 在 CPU、Metal、CUDA 或 Vulkan 上运行。
 
 ## API Provider
 
-配置方式保持 Git 风格，API Key 直接保存在 dox 配置中。由于 API 是默认 Provider，正常使用时无需再添加 `--api`：
+配置方式保持 Git 风格，API Key 直接保存在 qsay 配置中。由于 API 是默认 Provider，正常使用时无需再添加 `--api`：
 
 ```bash
-dox config --global llm.base-url https://api.openai.com/v1
-dox config --global llm.model gpt-4o-mini
-dox config --global llm.api-key "你的 API Key"
+qsay config --global llm.base-url https://api.openai.com/v1
+qsay config --global llm.model gpt-4o-mini
+qsay config --global llm.api-key "你的 API Key"
 
-dox --print "解压 backup.tar 到 ./backup"
+qsay --print "解压 backup.tar 到 ./backup"
 ```
 
 API Provider 接受 OpenAI-compatible `/chat/completions` 接口。
@@ -114,7 +114,7 @@ API Provider 接受 OpenAI-compatible `/chat/completions` 接口。
 定位单次命令的等待时间：
 
 ```bash
-dox --timing "切换到 develop"
+qsay --timing "切换到 develop"
 ```
 
 其中 `LLM` 包含完整 Provider 调用；API 模式还会单列 `API 往返`，它包含网络建连、服务端排队和模型生成。配置读取、Provider 初始化、响应解码和本地计划解析会分别列出。`--json` 的 `timing_ms` 字段也会保留这些数据。
@@ -129,17 +129,17 @@ API 返回的用量是服务端统计值；MLX 若服务不提供统计，则显
 
 ## 模型评估模式
 
-`dox eval` 使用相同工具 Schema、相同请求集比较本地模型和 API LLM，统计工具 exact match、正常请求参数 exact match、critical false-call、请求错误和 p50/p95 延迟。
+`qsay eval` 使用相同工具 Schema、相同请求集比较本地模型和 API LLM，统计工具 exact match、正常请求参数 exact match、critical false-call、请求错误和 p50/p95 延迟。
 
 ```bash
 # 本地模型
-dox eval --local --output reports/qwen-local.json --verbose
+qsay eval --local --output reports/qwen-local.json --verbose
 
 # 已配置的 API 模型
-dox eval --api --output reports/api.json --verbose
+qsay eval --api --output reports/api.json --verbose
 
 # 临时指定 API endpoint 和模型；API Key 仍从配置读取
-dox eval --api \
+qsay eval --api \
   --base-url https://api.example.com/v1 \
   --model example-model \
   --output reports/example-model.json
@@ -148,8 +148,8 @@ dox eval --api \
 筛选和自定义用例：
 
 ```bash
-dox eval --api --locale zh --locale mixed --limit 20
-dox eval --api --cases ./my-cases.jsonl
+qsay eval --api --locale zh --locale mixed --limit 20
+qsay eval --api --cases ./my-cases.jsonl
 ```
 
 评估返回码：无 critical false-call 时 `0`，存在 critical false-call 时 `1`，配置或整体请求失败时 `2`。即使单条 API 请求失败，报告仍会继续生成并记录错误。
@@ -160,20 +160,20 @@ dox eval --api --cases ./my-cases.jsonl
 
 ## 后续 TODO：多任务路由
 
-当前版本仍以命令路由为唯一产品能力。后续计划在同一个 `dox "..."` 入口中自动路由三类高频请求：命令生成、翻译和一句话问答。`ask`、`translate` 不会成为强制模式，只作为显式覆盖和可选语法糖。
+当前版本仍以命令路由为唯一产品能力。后续计划在同一个 `qsay "..."` 入口中自动路由三类高频请求：命令生成、翻译和一句话问答。`ask`、`translate` 不会成为强制模式，只作为显式覆盖和可选语法糖。
 
 计划中的用法：
 
 ```bash
 # 自动路由（计划中，尚未实现）
-dox "把部署已经完成翻译成英文"
-dox "什么是 git rebase？"
+qsay "把部署已经完成翻译成英文"
+qsay "什么是 git rebase？"
 
 # 显式覆盖（计划中，尚未实现）
-dox --task translate --to en "部署已经完成"
-dox --task answer "什么是 git rebase？"
-dox translate "部署已经完成"
-dox ask "什么是 git rebase？"
+qsay --task translate --to en "部署已经完成"
+qsay --task answer "什么是 git rebase？"
+qsay translate "部署已经完成"
+qsay ask "什么是 git rebase？"
 ```
 
 实现时会使用统一的 `command|translate|answer` 响应结构。翻译和问答只输出文本，不进入命令确认或执行流程；命令继续经过 Shell、风险和确认层。三类任务会分别控制 Prompt、输出长度、`--print`/`--json` 行为，并纳入独立的准确率、质量、延迟和误触发评估。
@@ -188,18 +188,18 @@ dox ask "什么是 git rebase？"
 
 优先级为系统级 < 全局 < 当前目录 < 命令行：
 
-- 系统级：macOS/Linux `/etc/doxconfig`；Windows `%PROGRAMDATA%\dox\config`
-- 全局：macOS/Linux `~/.doxconfig`；Windows `%USERPROFILE%\.doxconfig`
-- 当前目录：`./.dox/config`
+- 系统级：macOS/Linux `/etc/qsayconfig`；Windows `%PROGRAMDATA%\qsay\config`
+- 全局：macOS/Linux `~/.qsayconfig`；Windows `%USERPROFILE%\.qsayconfig`
+- 当前目录：`./.qsay/config`
 
-在 macOS/Linux 上，`dox config --global ...` 写入 `~/.doxconfig`；Windows 写入 `%USERPROFILE%\.doxconfig`。如果从未执行过全局配置命令，文件可能尚不存在，此时使用内置默认值。项目级配置写入当前目录的 `.dox/config`。
+在 macOS/Linux 上，`qsay config --global ...` 写入 `~/.qsayconfig`；Windows 写入 `%USERPROFILE%\.qsayconfig`。如果从未执行过全局配置命令，文件可能尚不存在，此时使用内置默认值。项目级配置写入当前目录的 `.qsay/config`。
 
 ```bash
-dox config --list
-dox config --global core.language en
-dox config --global llm.provider api
-dox config --global local.backend auto
-dox config --unset --global local.model-path
+qsay config --list
+qsay config --global core.language en
+qsay config --global llm.provider api
+qsay config --global local.backend auto
+qsay config --unset --global local.model-path
 ```
 
 完整配置示例（API Key 会以明文写入文件，请勿将该文件提交到公共仓库）：
@@ -228,19 +228,19 @@ context-size = "2048"
 
 ```bash
 .venv/bin/pytest -q
-.venv/bin/python -m dox --help
-.venv/bin/python -m dox eval --help
+.venv/bin/python -m qsay --help
+.venv/bin/python -m qsay eval --help
 ```
 
 本地 Qwen 冒烟测试：
 
 ```bash
-.venv/bin/python -m dox --local --print "查看 git 状态"
-.venv/bin/python -m dox eval --local --limit 3 --verbose
+.venv/bin/python -m qsay --local --print "查看 git 状态"
+.venv/bin/python -m qsay eval --local --limit 3 --verbose
 ```
 
 llama.cpp 的 Metal/kernel 探测日志默认隐藏。排查本地推理后端时，可用
-`DOX_LLAMA_LOG=1 dox ...` 临时显示原生日志。
+`QSAY_LLAMA_LOG=1 qsay ...` 临时显示原生日志。
 
 模型只负责规划和路由。命令风险升级、确认、高风险 `--yes` 阻断及执行仍由确定性代码控制；模型输出不会直接静默执行。
 

@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from dox.evaluation import default_cases_path, evaluate_call, load_cases, percentile, run_evaluation
-from dox.providers import Provider
+from qsay.evaluation import default_cases_path, evaluate_call, load_cases, percentile, run_evaluation
+from qsay.providers import Provider
 
 
 class FakeProvider(Provider):

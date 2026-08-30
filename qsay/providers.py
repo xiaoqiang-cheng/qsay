@@ -74,7 +74,7 @@ def task_system_prompt(
             "Do not use keywords or external tools; decide from the request meaning."
         )
     return (
-        "You are dox, a natural-language terminal assistant. Return exactly one JSON "
+        "You are qsay, a natural-language terminal assistant. Return exactly one JSON "
         "object and no markdown. Do not use a reasoning mode, provide chain-of-thought, "
         "or write long explanations; output the final JSON immediately. "
         f"{task_instruction} If the request is ambiguous or unsafe to complete reliably, "
@@ -228,17 +228,17 @@ class APIProvider(Provider):
         if not self.model:
             raise RuntimeError(
                 "尚未配置 API。请运行：\n"
-                "  dox config --global llm.base-url https://api.openai.com/v1\n"
-                "  dox config --global llm.model YOUR_MODEL\n"
-                "  dox config --global llm.api-key YOUR_API_KEY\n"
-                "也可以使用 `dox --local ...` "
+                "  qsay config --global llm.base-url https://api.openai.com/v1\n"
+                "  qsay config --global llm.model YOUR_MODEL\n"
+                "  qsay config --global llm.api-key YOUR_API_KEY\n"
+                "也可以使用 `qsay --local ...` "
                 "切换到本地模型。"
             )
         if not self.api_key:
             raise RuntimeError(
                 "尚未配置 API Key。请运行：\n"
-                "  dox config --global llm.api-key YOUR_API_KEY\n"
-                "API Key 将保存在用户配置文件中；也可以使用 `dox --local ...` "
+                "  qsay config --global llm.api-key YOUR_API_KEY\n"
+                "API Key 将保存在用户配置文件中；也可以使用 `qsay --local ...` "
                 "切换到本地模型。"
             )
 
@@ -264,13 +264,13 @@ def is_qwen_model(model: str) -> bool:
 
 
 def model_cache_dir() -> Path:
-    override = os.environ.get("DOX_MODEL_DIR")
+    override = os.environ.get("QSAY_MODEL_DIR")
     if override:
         return Path(override)
     if os.name == "nt":
         root = Path(os.environ.get("LOCALAPPDATA", str(Path.home())))
-        return root / "dox" / "models"
-    return Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "dox" / "models"
+        return root / "qsay" / "models"
+    return Path(os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))) / "qsay" / "models"
 
 
 def default_model_path() -> Path:
@@ -292,7 +292,7 @@ def resolve_local_backend(config: Config, override: Optional[str] = None) -> str
 @contextmanager
 def suppress_native_output() -> Iterator[None]:
     """Silence native-library startup logs while preserving Python exceptions."""
-    if os.environ.get("DOX_LLAMA_LOG"):
+    if os.environ.get("QSAY_LLAMA_LOG"):
         yield
         return
 
@@ -326,12 +326,12 @@ class LlamaCppProvider(Provider):
                 from llama_cpp import Llama
         except ImportError as exc:
             raise RuntimeError(
-                "缺少本地推理依赖。请运行 `python -m pip install 'dox-cli[local]'`"
+                "缺少本地推理依赖。请运行 `python -m pip install 'qsay[local]'`"
             ) from exc
         path = Path(model_path or config.local_model_path or default_model_path())
         if not path.is_file():
             raise RuntimeError(
-                f"未找到本地模型 `{path}`。运行 `dox model download`，"
+                f"未找到本地模型 `{path}`。运行 `qsay model download`，"
                 "或配置 `local.model-path`。"
             )
         threads = config.local_threads or max(1, (os.cpu_count() or 2) // 2)

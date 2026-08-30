@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reproducible Needle 2 routing evaluation for dox.
+"""Reproducible Needle 2 routing evaluation for qsay.
 
 The model only selects a declared tool and extracts arguments.  This script
 never executes a generated command.  Set NEEDLE_TELEMETRY=0 for offline runs.
@@ -46,7 +46,7 @@ def evaluate(response, case):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkpoint", type=Path, help="Optional .cact LoRA weights; omit for the confidence-calibrated Needle 2 base engine")
-    ap.add_argument("--cases", type=Path, default=Path(__file__).parent.parent / "dox" / "cases.jsonl")
+    ap.add_argument("--cases", type=Path, default=Path(__file__).parent.parent / "qsay" / "cases.jsonl")
     ap.add_argument("--output", type=Path)
     ap.add_argument("--max-new-tokens", type=int, default=96)
     ap.add_argument("--warmup", type=int, default=1)
@@ -63,7 +63,7 @@ def main():
 
     rows = []
     for case in cases:
-        # Each dox invocation is an independent request. Needle keeps a sliding
+        # Each qsay invocation is an independent request. Needle keeps a sliding
         # session internally, so reset it to prevent earlier benchmark text from
         # contaminating tool selection and extracted arguments.
         agent.reset()

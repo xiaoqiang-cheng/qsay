@@ -35,7 +35,7 @@ def current_shell(platform: str) -> str:
 
 
 def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(prog="dox", description="自然语言命令路由器")
+    result = argparse.ArgumentParser(prog="qsay", description="自然语言命令路由器")
     result.add_argument("request", nargs="*", help="自然语言命令")
     result.add_argument("--print", dest="print_only", action="store_true", help="只打印命令")
     result.add_argument("--copy", action="store_true", help="复制命令，不执行")
@@ -53,7 +53,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--offline", action="store_true", help="禁止网络 Provider")
     result.add_argument("--backend", choices=["auto", "llama-cpp", "mlx", "server"], help="本地推理 backend")
     result.add_argument("--model-path", help="临时指定本地模型路径")
-    result.add_argument("--version", action="version", version=f"dox {__version__}")
+    result.add_argument("--version", action="version", version=f"qsay {__version__}")
     return result
 
 
@@ -276,7 +276,7 @@ def finish_plan(plan: Plan, args: argparse.Namespace, language: str, platform: s
 
 
 def evaluate_command(argv: Sequence[str]) -> int:
-    eval_parser = argparse.ArgumentParser(prog="dox eval", description="评估本地或 API LLM 的工具路由准确率")
+    eval_parser = argparse.ArgumentParser(prog="qsay eval", description="评估本地或 API LLM 的工具路由准确率")
     providers = eval_parser.add_mutually_exclusive_group()
     providers.add_argument("--api", action="store_true", help="测试 API LLM")
     providers.add_argument("--local", action="store_true", help="测试本地模型")
@@ -332,7 +332,7 @@ def evaluate_command(argv: Sequence[str]) -> int:
 
 
 def model_command(argv: Sequence[str]) -> int:
-    model_parser = argparse.ArgumentParser(prog="dox model")
+    model_parser = argparse.ArgumentParser(prog="qsay model")
     sub = model_parser.add_subparsers(dest="action", required=True)
     sub.add_parser("path", help="显示默认模型路径")
     download = sub.add_parser("download", help="下载默认 Qwen3-0.6B GGUF")

@@ -1,6 +1,6 @@
 import pytest
 
-from dox.schema import PlanError, assess_command_risk, parse_plan, shell_supported
+from qsay.schema import PlanError, assess_command_risk, parse_plan, shell_supported
 
 
 def test_parses_plan_and_escalates_risk():

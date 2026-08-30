@@ -1,7 +1,7 @@
 import json
 
-from dox.cli import main, plan_request, show_plan
-from dox.providers import Provider
+from qsay.cli import main, plan_request, show_plan
+from qsay.providers import Provider
 
 
 class UsageProvider(Provider):
@@ -37,7 +37,7 @@ def test_default_cli_explains_api_configuration(tmp_path, capsys):
     captured = capsys.readouterr()
     assert exit_code == 2
     assert "尚未配置 API" in captured.err
-    assert "dox config --global llm.model" in captured.err
+    assert "qsay config --global llm.model" in captured.err
 
 
 def test_plan_displays_provider_token_usage(capsys):
