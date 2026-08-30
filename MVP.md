@@ -50,6 +50,7 @@ dox "解压 backup.tar 到 ./backup"
 - 不支持 Windows `cmd.exe`
 - MVP 不从远程仓库安装 Adapter 或可执行插件
 - 不承诺 0.6B 模型可以可靠生成所有任意 Shell 命令
+- MVP 暂不提供翻译和一般问答；这两类能力记录在后续 TODO 中
 
 ## 4. 用户体验
 
@@ -133,6 +134,7 @@ Provider.complete(messages, tools?, max_tokens) -> assistant message
 - API Key 直接保存在用户配置文件中，不依赖额外环境变量
 - 请求只包含当前自然语言请求、必要的目标平台信息和工具 Schema，不默认发送项目内容或历史
 - API 默认使用零温度、短输出和无思考过程提示；API 服务是否支持真正关闭隐藏 reasoning 取决于服务商，没有跨供应商统一参数
+- Qwen-compatible API 显式发送 `enable_thinking=false`；其他 API 只使用通用参数和无思考过程提示
 - llama.cpp/server 追加 Qwen 的 `/no_think`，MLX 显式使用 `enable_thinking=False`
 - Provider 返回的 token 用量进入计划的 `token_usage`，供交互展示和 JSON/评估报表使用
 
@@ -206,6 +208,7 @@ dox eval --api --output reports/api.json --verbose
 - 单条请求错误数
 - p50、p95 和平均延迟
 - 输入、输出和总 token 用量
+- 单次请求、API 往返和整份评估墙钟耗时；API 可通过 `--jobs` 受控并发
 - 失败明细与完整 JSON 行级结果
 
 可通过 `--cases` 使用自定义数据集，通过可重复的 `--locale` 筛选 `zh`、`en`、`mixed`，通过 `--limit` 做冒烟测试。单条失败不会中止整份报告。
@@ -298,6 +301,20 @@ MVP 只加载内置能力和用户本地文件。这里的“远程 Adapter 包�
 - 声明式本地 Adapter
 - 经过签名和审核的远程 Adapter 仓库
 - 受限的当前会话命令修正
+
+### P3：多任务自然语言路由（TODO）
+
+目标是让 dox 在同一个自然语言入口中路由三类高频任务：命令生成、翻译和一句话问答。该阶段不改变命令执行的确认与风险边界。
+
+- [ ] 统一响应协议，增加 `type: command|translate|answer`；翻译和问答使用 `text`，命令使用 `command` 与 `risk`
+- [ ] 默认自动判断任务类型，保持一次模型请求；不采用关键词规则承担意图识别
+- [ ] 增加可选的显式覆盖：`--task command|translate|answer`
+- [ ] 提供 `dox translate` 和 `dox ask` 作为可选语法糖，但不要求用户记忆或使用它们
+- [ ] 翻译支持 `--to` 指定目标语言，无法判断时提出澄清问题
+- [ ] 为三类任务使用独立的短 Prompt、输出上限和展示逻辑，避免问答或翻译进入命令确认流程
+- [ ] 约定 `--print` 输出纯文本、`--json` 输出统一结构，并保留 token 与耗时统计
+- [ ] 增加中英文和混合输入评估集，分别评估路由准确率、翻译质量、回答简洁性、延迟和误触发命令率
+- [ ] 明确本地 0.6B 的翻译/问答质量门槛；未达标时继续优先使用 API，不自动静默降级
 
 ## 12. 验收标准
 

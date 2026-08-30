@@ -62,6 +62,7 @@ dox --json "查看当前 git 状态"
 - `--json`：输出结构化计划
 - `--copy`：复制命令
 - `--yes`：跳过普通确认，高风险命令除外
+- `--timing`：显示配置、Provider 初始化、LLM/API 和解析耗时
 - `--local` / `--offline`：强制本地模型
 - `--api`：强制 API Provider（当前默认）
 - `--backend llama-cpp|mlx|server`：临时选择本地 backend
@@ -108,7 +109,15 @@ dox --print "解压 backup.tar 到 ./backup"
 
 API Provider 接受 OpenAI-compatible `/chat/completions` 接口。
 
-默认请求使用 `temperature=0`、短输出上限和“只返回最终 JSON”的提示，不要求模型输出思考过程。对于本地 Qwen，llama.cpp/server 会追加 `/no_think`，MLX 使用 `enable_thinking=False`；通用 API 没有统一的隐藏推理开关，具体服务是否在内部推理由服务商和模型决定。
+默认请求使用 `temperature=0`、短输出上限和“只返回最终 JSON”的提示，不要求模型输出思考过程。Qwen API 还会显式发送 `enable_thinking=false`；本地 Qwen 的 llama.cpp/server 会追加 `/no_think`，MLX 使用 `enable_thinking=False`。其他通用 API 没有统一的隐藏推理开关，具体服务是否在内部推理由服务商和模型决定。
+
+定位单次命令的等待时间：
+
+```bash
+dox --timing "切换到 develop"
+```
+
+其中 `LLM` 包含完整 Provider 调用；API 模式还会单列 `API 往返`，它包含网络建连、服务端排队和模型生成。配置读取、Provider 初始化、响应解码和本地计划解析会分别列出。`--json` 的 `timing_ms` 字段也会保留这些数据。
 
 普通交互输出会显示本轮 token 用量，例如：
 
@@ -129,6 +138,9 @@ dox eval --local --output reports/qwen-local.json --verbose
 # 已配置的 API 模型
 dox eval --api --output reports/api.json --verbose
 
+# 4 路并发，缩短完整 API 评估的墙钟时间
+dox eval --api --jobs 4 --output reports/api.json --verbose
+
 # 临时指定 API endpoint 和模型；API Key 仍从配置读取
 dox eval --api \
   --base-url https://api.example.com/v1 \
@@ -145,9 +157,29 @@ dox eval --api --cases ./my-cases.jsonl
 
 评估返回码：无 critical false-call 时 `0`，存在 critical false-call 时 `1`，配置或整体请求失败时 `2`。即使单条 API 请求失败，报告仍会继续生成并记录错误。
 
-评估报表也会记录逐条 `token_usage` 以及累计输入/输出 token，方便比较 API、本地模型和不同 Prompt 的成本与延迟。
+评估报表也会记录逐条 `token_usage`、请求/API 往返耗时，以及累计输入、输出和 reasoning token，方便比较 API、本地模型和不同 Prompt 的成本与延迟。API 评估可用 `--jobs N` 并发执行；它缩短整份报告的墙钟时间，不会降低单条请求延迟，并可能触发服务商限流。进程内本地模型固定使用 `--jobs 1`。
 
 当前 Qwen3-0.6B Q4_K_M 在本开发机的 33 条完整基线为：工具 exact match 72.7%、正常参数 exact match 94.7%、4 次 critical false-call，p50/p95 约 1.85/1.96 秒。它足以验证本地闭环，但尚未达到发布门槛；否定句、无关请求和危险路径必须继续由确定性安全层阻断。
+
+## 后续 TODO：多任务路由
+
+当前版本仍以命令路由为唯一产品能力。后续计划在同一个 `dox "..."` 入口中自动路由三类高频请求：命令生成、翻译和一句话问答。`ask`、`translate` 不会成为强制模式，只作为显式覆盖和可选语法糖。
+
+计划中的用法：
+
+```bash
+# 自动路由（计划中，尚未实现）
+dox "把部署已经完成翻译成英文"
+dox "什么是 git rebase？"
+
+# 显式覆盖（计划中，尚未实现）
+dox --task translate --to en "部署已经完成"
+dox --task answer "什么是 git rebase？"
+dox translate "部署已经完成"
+dox ask "什么是 git rebase？"
+```
+
+实现时会使用统一的 `command|translate|answer` 响应结构。翻译和问答只输出文本，不进入命令确认或执行流程；命令继续经过 Shell、风险和确认层。三类任务会分别控制 Prompt、输出长度、`--print`/`--json` 行为，并纳入独立的准确率、质量、延迟和误触发评估。
 
 用例格式：
 
