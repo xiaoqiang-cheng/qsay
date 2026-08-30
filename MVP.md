@@ -262,6 +262,8 @@ Adapter 必须声明：
 
 ## 7. 模型策略
 
+本地模型调研和候选比较见 [LOCAL-MODEL-RESEARCH.md](LOCAL-MODEL-RESEARCH.md)。当前结论是先以 Needle 2 做 PoC，同时保留 FunctionGemma 和 Qwen3-0.6B 作为对照，不在验证前锁定默认本地模型。
+
 ### 7.1 路由顺序
 
 ```text
@@ -389,6 +391,7 @@ docs/
 ### P1：本地模型与扩展
 
 - 本地模型 Provider
+- Needle 2 sidecar PoC 及中文/英文评测
 - IntentPlan 约束输出
 - 20～30 个意图
 - 缺参追问
@@ -425,6 +428,7 @@ docs/
 - 自然语言修正推迟到 P1，只保留当前会话的 `IntentPlan`
 - 核心 CLI 选用 Rust，P0 不要求 Python、Node.js 或容器运行时
 - 安全校验和命令执行在无网络时仍可运行；P0 的自然语言规划需要显式配置 API Provider，后续本地模型接入后才能完全离线规划
+- 本地模型首选 Needle 2 做 PoC；FunctionGemma、Qwen3-0.6B 作为对照
 
 仍待决定：
 

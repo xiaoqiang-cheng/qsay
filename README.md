@@ -150,4 +150,4 @@ Get-Content "$DoxTestDir\out\hello.txt"
 
 ## 设计文档
 
-详见 [MVP.md](MVP.md)。
+详见 [MVP.md](MVP.md) 和 [本地小模型调研](LOCAL-MODEL-RESEARCH.md)。
