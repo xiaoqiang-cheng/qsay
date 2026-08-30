@@ -23,6 +23,7 @@ language = "en"
 [llm]
 provider = "api"
 model = "demo"
+api-key = "secret"
 
 [local]
 backend = "mlx"
@@ -30,6 +31,7 @@ backend = "mlx"
     values = parse_config(source)
     assert values["core.language"] == "en"
     assert values["llm.model"] == "demo"
+    assert values["llm.api-key"] == "secret"
     assert parse_config(render_config(values)) == values
 
 

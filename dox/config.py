@@ -12,7 +12,7 @@ DEFAULTS = {
     "llm.provider": "api",
     "llm.base-url": "https://api.openai.com/v1",
     "llm.model": "",
-    "llm.api-key-env": "OPENAI_API_KEY",
+    "llm.api-key": "",
     "llm.timeout-seconds": "60",
     "local.model": "Qwen3-0.6B",
     "local.backend": "auto",
@@ -22,13 +22,15 @@ DEFAULTS = {
     "local.context-size": "2048",
 }
 
+SENSITIVE_KEYS = {"llm.api-key"}
+
 ALIASES = {
     "language": "core.language",
     "provider": "llm.provider",
     "base-url": "llm.base-url",
     "api.base-url": "llm.base-url",
     "model": "llm.model",
-    "api-key-env": "llm.api-key-env",
+    "api-key": "llm.api-key",
     "timeout": "llm.timeout-seconds",
     "timeout-seconds": "llm.timeout-seconds",
     "backend": "local.backend",
@@ -115,7 +117,7 @@ class Config:
     provider: str
     base_url: str
     model: str
-    api_key_env: str
+    api_key: str
     timeout_seconds: float
     local_model: str
     local_backend: str
@@ -141,7 +143,7 @@ class Config:
             provider=values.get("llm.provider", "api"),
             base_url=values.get("llm.base-url", "https://api.openai.com/v1"),
             model=values.get("llm.model", ""),
-            api_key_env=values.get("llm.api-key-env", "OPENAI_API_KEY"),
+            api_key=values.get("llm.api-key", ""),
             timeout_seconds=max(timeout, 1.0),
             local_model=values.get("local.model", "Qwen3-0.6B"),
             local_backend=values.get("local.backend", "auto"),
@@ -159,6 +161,13 @@ def load_config(explicit: Optional[Path] = None) -> Config:
 def write_config(path: Path, values: Dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render_config(values), encoding="utf-8")
+    # API keys are intentionally supported in the config file, so keep user
+    # config files private on POSIX systems. Windows ACLs remain authoritative.
+    if os.name != "nt":
+        try:
+            path.chmod(0o600)
+        except OSError:
+            pass
 
 
 def config_command(argv: Iterable[str]) -> int:
@@ -198,7 +207,8 @@ def config_command(argv: Iterable[str]) -> int:
     if list_values:
         values = read_config(path) if scope_explicit or explicit else load_values()
         for key, value in sorted(values.items()):
-            print(f"{key}={value}")
+            shown = "<configured>" if key in SENSITIVE_KEYS and value else value
+            print(f"{key}={shown}")
         return 0
     if not positional or len(positional) > 2:
         print_config_help()
@@ -238,7 +248,7 @@ def print_config_help() -> None:
   dox config --global llm.provider api
   dox config --global llm.base-url https://api.openai.com/v1
   dox config --global llm.model gpt-4o-mini
-  dox config --global llm.api-key-env OPENAI_API_KEY
+  dox config --global llm.api-key YOUR_API_KEY
   dox config --global llm.provider local
   dox config --global local.backend auto
   dox config --global local.model-path /path/to/Qwen3-0.6B-Q4_K_M.gguf

@@ -40,13 +40,12 @@ dox config --global local.model-path /path/to/Qwen3-0.6B-Q4_K_M.gguf
 
 ## 使用
 
-默认使用 API。首次使用先配置 OpenAI-compatible endpoint、模型名和 API Key 环境变量：
+默认使用 API。首次使用先配置 OpenAI-compatible endpoint、模型名和 API Key：
 
 ```bash
 dox config --global llm.base-url https://api.openai.com/v1
 dox config --global llm.model gpt-4o-mini
-dox config --global llm.api-key-env OPENAI_API_KEY
-export OPENAI_API_KEY="你的 API Key"
+dox config --global llm.api-key "你的 API Key"
 ```
 
 未配置时，dox 会打印上述配置方法，不会自动回退到准确率未达门槛的本地模型。配置完成后：
@@ -97,13 +96,12 @@ dox config --global local.model Qwen3-0.6B
 
 ## API Provider
 
-配置方式保持 Git 风格，API Key 只从环境变量读取。由于 API 是默认 Provider，正常使用时无需再添加 `--api`：
+配置方式保持 Git 风格，API Key 直接保存在 dox 配置中。由于 API 是默认 Provider，正常使用时无需再添加 `--api`：
 
 ```bash
 dox config --global llm.base-url https://api.openai.com/v1
 dox config --global llm.model gpt-4o-mini
-dox config --global llm.api-key-env OPENAI_API_KEY
-export OPENAI_API_KEY="你的 API Key"
+dox config --global llm.api-key "你的 API Key"
 
 dox --print "解压 backup.tar 到 ./backup"
 ```
@@ -131,11 +129,10 @@ dox eval --local --output reports/qwen-local.json --verbose
 # 已配置的 API 模型
 dox eval --api --output reports/api.json --verbose
 
-# 临时指定 API，不修改配置
+# 临时指定 API endpoint 和模型；API Key 仍从配置读取
 dox eval --api \
   --base-url https://api.example.com/v1 \
   --model example-model \
-  --api-key-env EXAMPLE_API_KEY \
   --output reports/example-model.json
 ```
 
@@ -176,7 +173,7 @@ dox config --global local.backend auto
 dox config --unset --global local.model-path
 ```
 
-完整配置示例：
+完整配置示例（API Key 会以明文写入文件，请勿将该文件提交到公共仓库）：
 
 ```toml
 [core]
@@ -186,7 +183,7 @@ language = "zh"
 provider = "api"
 base-url = "https://api.openai.com/v1"
 model = "gpt-4o-mini"
-api-key-env = "OPENAI_API_KEY"
+api-key = "你的 API Key"
 timeout-seconds = "60"
 
 [local]

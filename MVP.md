@@ -130,7 +130,7 @@ Provider.complete(messages, tools?, max_tokens) -> assistant message
 
 - `local`：完全离线，适合隐私、断网和低成本场景
 - `api`：默认；OpenAI-compatible `/chat/completions`，作为当前高质量快速路径
-- API Key 只从用户指定的环境变量读取
+- API Key 直接保存在用户配置文件中，不依赖额外环境变量
 - 请求只包含当前自然语言请求、必要的目标平台信息和工具 Schema，不默认发送项目内容或历史
 - API 默认使用零温度、短输出和无思考过程提示；API 服务是否支持真正关闭隐藏 reasoning 取决于服务商，没有跨供应商统一参数
 - llama.cpp/server 追加 Qwen 的 `/no_think`，MLX 显式使用 `enable_thinking=False`
@@ -174,10 +174,10 @@ MVP 默认采用进程内 `llama-cpp-python`：概念和安装路径最简单，
 dox config --global llm.provider api
 dox config --global llm.base-url https://api.openai.com/v1
 dox config --global llm.model gpt-4o-mini
-dox config --global llm.api-key-env OPENAI_API_KEY
+dox config --global llm.api-key YOUR_API_KEY
 ```
 
-API 尚未配置时，dox 必须打印可直接复制的配置命令和 API Key 环境变量示例，不自动回退到本地模型。离线模式显式配置：
+API 尚未配置时，dox 必须打印可直接复制的配置命令，不自动回退到本地模型。API Key 会明文保存在配置文件中，文件权限应限制为当前用户且不应提交到公共仓库。离线模式显式配置：
 
 ```bash
 dox config --global llm.provider local
@@ -261,7 +261,7 @@ MVP 只加载内置能力和用户本地文件。这里的“远程 Adapter 包�
 - Windows 只允许 PowerShell 计划
 - 删除、根目录、权限、磁盘、`sudo`、强制 Git 和下载执行需要更严格策略
 - 命令不存在时明确报错，不自动安装
-- API Key 不写入 dox 配置，不上传遥测或命令历史
+- API Key 仅写入用户配置文件并尽量使用私有文件权限；不上传遥测或命令历史
 
 当前风险扫描只是 MVP 下限，不是完整 Shell parser。进入可发布阶段前，需要将高频能力迁移到 Adapter/argv 执行，并为管道、重定向、引号和路径边界增加平台测试。
 

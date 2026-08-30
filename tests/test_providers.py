@@ -68,12 +68,12 @@ def test_api_provider_explains_initial_configuration():
 def test_api_provider_explains_missing_key(monkeypatch):
     values = load_values(Path("/missing-dox-config"))
     values["llm.model"] = "demo"
-    values["llm.api-key-env"] = "DOX_TEST_API_KEY"
+    values["llm.api-key"] = ""
     config = Config.from_values(values)
-    provider = APIProvider(config)
-    monkeypatch.delenv("DOX_TEST_API_KEY", raising=False)
+    # An environment variable must not be required or implicitly consumed.
+    monkeypatch.setenv("DOX_TEST_API_KEY", "secret")
     with pytest.raises(RuntimeError) as error:
-        provider.complete([{"role": "user", "content": "hello"}])
+        APIProvider(config)
     message = str(error.value)
-    assert "export DOX_TEST_API_KEY" in message
-    assert "$env:DOX_TEST_API_KEY" in message
+    assert "dox config --global llm.api-key YOUR_API_KEY" in message
+    assert "环境变量" not in message

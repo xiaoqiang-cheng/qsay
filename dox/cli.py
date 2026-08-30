@@ -208,7 +208,6 @@ def evaluate_command(argv: Sequence[str]) -> int:
     eval_parser.add_argument("--output", type=Path, help="保存完整 JSON 报告")
     eval_parser.add_argument("--model", help="临时覆盖 API 模型名")
     eval_parser.add_argument("--base-url", help="临时覆盖 API base URL")
-    eval_parser.add_argument("--api-key-env", help="临时覆盖 API Key 环境变量名")
     eval_parser.add_argument("--backend", choices=["auto", "llama-cpp", "mlx", "server"])
     eval_parser.add_argument("--model-path")
     eval_parser.add_argument("--config", type=Path)
@@ -223,7 +222,7 @@ def evaluate_command(argv: Sequence[str]) -> int:
         if args.local or (not args.api and config.provider.lower() == "local"):
             provider = local_provider(config, args.backend, args.model_path)
         else:
-            provider = APIProvider(config, args.model, args.base_url, args.api_key_env)
+            provider = APIProvider(config, args.model, args.base_url)
         result = run_evaluation(provider, args.cases, args.output, args.locale, args.limit, args.verbose)
     except (RuntimeError, ValueError, OSError) as exc:
         print(f"评估失败：{exc}" if language == "zh" else f"Evaluation failed: {exc}", file=sys.stderr)
