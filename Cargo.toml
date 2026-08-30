@@ -1,0 +1,15 @@
+[package]
+name = "dox"
+version = "0.1.0"
+edition = "2021"
+description = "A lightweight, offline-first natural-language command router"
+license = "MIT"
+
+[dependencies]
+serde_json = "1"
+ureq = "2.12"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
