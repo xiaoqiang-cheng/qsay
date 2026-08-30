@@ -14,6 +14,9 @@ class Plan:
     assumptions: List[str] = field(default_factory=list)
     tools: List[str] = field(default_factory=list)
     clarification: Optional[str] = None
+    type: str = "command"
+    text: Optional[str] = None
+    target_language: Optional[str] = None
     token_usage: Optional[Dict[str, Any]] = None
     timing_ms: Optional[Dict[str, float]] = None
 
@@ -47,8 +50,33 @@ def extract_json_object(content: str) -> Dict[str, Any]:
     return value
 
 
-def parse_plan(content: str, platform: str, language: str) -> Plan:
+def parse_response(
+    content: str,
+    platform: str,
+    language: str,
+    expected_type: Optional[str] = None,
+) -> Plan:
     value = extract_json_object(content)
+    requested_type = (expected_type or "auto").strip().lower()
+    if requested_type not in {"auto", "command", "translate", "answer"}:
+        raise PlanError(f"不支持的任务类型 `{expected_type}`")
+
+    raw_type = value.get("type")
+    if raw_type is None:
+        task_type = "command" if requested_type == "auto" else requested_type
+    else:
+        task_type = str(raw_type).strip().lower()
+        task_type = {
+            "translation": "translate",
+            "translate_text": "translate",
+            "qa": "answer",
+            "question": "answer",
+        }.get(task_type, task_type)
+    if task_type not in {"command", "translate", "answer"}:
+        raise PlanError(f"模型返回了不支持的任务类型 `{raw_type}`")
+    if requested_type != "auto" and task_type != requested_type:
+        raise PlanError(f"模型返回的任务类型 `{task_type}` 与请求的 `{requested_type}` 不一致")
+
     clarification = value.get("clarification")
     if isinstance(clarification, str) and clarification.strip():
         return Plan(
@@ -57,7 +85,30 @@ def parse_plan(content: str, platform: str, language: str) -> Plan:
             shell=str(value.get("shell") or default_shell(platform)),
             risk="read_only",
             clarification=clarification.strip(),
+            type=task_type,
+            target_language=_optional_string(value.get("target_language")),
         )
+
+    if task_type in {"translate", "answer"}:
+        text = value.get("text")
+        if not isinstance(text, str) or not text.strip():
+            fallback_key = "translation" if task_type == "translate" else "answer"
+            text = value.get(fallback_key)
+        if not isinstance(text, str) or not text.strip():
+            raise PlanError("模型没有返回可显示的文本，也没有提出澄清问题")
+        target_language = _optional_string(value.get("target_language"))
+        return Plan(
+            intent=str(value.get("intent") or task_type),
+            command="",
+            shell=str(value.get("shell") or default_shell(platform)),
+            risk="read_only",
+            assumptions=[],
+            tools=[],
+            type=task_type,
+            text=text.strip(),
+            target_language=target_language,
+        )
+
     command = value.get("command")
     if not isinstance(command, str) or not command.strip():
         raise PlanError("模型没有返回可执行命令，也没有提出澄清问题")
@@ -80,7 +131,17 @@ def parse_plan(content: str, platform: str, language: str) -> Plan:
         risk=risk,
         assumptions=assumptions,
         tools=tools,
+        type="command",
     )
+
+
+def parse_plan(content: str, platform: str, language: str) -> Plan:
+    """Parse the legacy command-only response format."""
+    return parse_response(content, platform, language, expected_type="command")
+
+
+def _optional_string(value: Any) -> Optional[str]:
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 def normalize_risk(value: Any) -> str:

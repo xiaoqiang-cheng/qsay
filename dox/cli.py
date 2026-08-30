@@ -13,9 +13,9 @@ from typing import Optional, Sequence
 
 from . import __version__
 from .config import Config, config_command, load_config
-from .evaluation import default_cases_path, print_report, run_evaluation
-from .providers import APIProvider, Provider, command_system_prompt, download_default_model, local_provider, message_content, message_timing, message_usage
-from .schema import Plan, PlanError, default_shell, parse_plan
+from .evaluation import default_cases_path, print_report, print_task_report, run_evaluation, run_task_evaluation
+from .providers import APIProvider, Provider, download_default_model, local_provider, message_content, message_timing, message_usage, task_system_prompt
+from .schema import Plan, PlanError, default_shell, parse_response
 
 
 def platform_name() -> str:
@@ -43,6 +43,8 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--yes", action="store_true", help="跳过普通确认")
     result.add_argument("--explain", action="store_true", help="显示额外计划信息")
     result.add_argument("--timing", action="store_true", help="显示配置、模型调用和解析耗时")
+    result.add_argument("--task", choices=["auto", "command", "translate", "answer"], default="auto", help="任务类型；默认自动判断")
+    result.add_argument("--to", dest="target_language", help="翻译目标语言（会将任务设为 translate）")
     result.add_argument("--lang", choices=["zh", "en"], help="界面语言")
     result.add_argument("--config", type=Path, help="指定配置文件")
     group = result.add_mutually_exclusive_group()
@@ -65,22 +67,30 @@ def provider_for(config: Config, force_local: bool, force_api: bool, offline: bo
     return APIProvider(config)
 
 
-def plan_request(provider: Provider, request: str, platform: str, language: str) -> Plan:
+def plan_request(
+    provider: Provider,
+    request: str,
+    platform: str,
+    language: str,
+    task: str = "auto",
+    target_language: Optional[str] = None,
+) -> Plan:
     started = time.perf_counter()
     prepare_started = started
     shell = current_shell(platform)
     messages = [
-        {"role": "system", "content": command_system_prompt(platform, shell, language)},
+        {"role": "system", "content": task_system_prompt(platform, shell, language, task, target_language)},
         {"role": "user", "content": request},
     ]
     # A valid plan is compact JSON; keeping the cap low limits accidental
     # explanations/reasoning while leaving room for paths and assumptions.
     prepare_ms = (time.perf_counter() - prepare_started) * 1000
     llm_started = time.perf_counter()
-    message = provider.complete(messages, max_tokens=128)
+    max_tokens = 128 if task == "command" else 256
+    message = provider.complete(messages, max_tokens=max_tokens)
     llm_ms = (time.perf_counter() - llm_started) * 1000
     parse_started = time.perf_counter()
-    plan = parse_plan(message_content(message), platform, language)
+    plan = parse_response(message_content(message), platform, language, expected_type=task)
     parse_ms = (time.perf_counter() - parse_started) * 1000
     plan.token_usage = message_usage(message)
     plan.timing_ms = {
@@ -150,6 +160,18 @@ def risk_label(risk: str, language: str) -> str:
 
 
 def show_plan(plan: Plan, language: str, explain: bool = False, timing: bool = False) -> None:
+    if plan.type != "command":
+        label = "译文" if plan.type == "translate" else "回答"
+        label_en = "Translation" if plan.type == "translate" else "Answer"
+        text = plan.text or ""
+        if language == "zh":
+            print(f"{label}：{text}")
+        else:
+            print(f"{label_en}: {text}")
+        show_token_usage(plan.token_usage, language)
+        if timing:
+            show_timing(plan.timing_ms, language)
+        return
     if language == "zh":
         print(f"意图：{plan.intent}")
         print(f"命令：{plan.command}")
@@ -206,16 +228,22 @@ def finish_plan(plan: Plan, args: argparse.Namespace, language: str, platform: s
         print(json.dumps(plan.to_dict(), ensure_ascii=False))
         return 0
     if args.print_only:
-        print(plan.command)
+        print(plan.command if plan.type == "command" else (plan.text or ""))
         return 0
     show_plan(plan, language, args.explain, args.timing)
     if args.copy:
         try:
-            copy_command(plan.command, platform)
+            copy_command(plan.command if plan.type == "command" else (plan.text or ""), platform)
         except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
             print(f"复制失败：{exc}", file=sys.stderr)
             return 1
-        print("命令已复制到剪贴板。" if language == "zh" else "Command copied to clipboard.")
+        if language == "zh":
+            print("命令已复制到剪贴板。" if plan.type == "command" else "内容已复制到剪贴板。")
+        else:
+            print("Command copied to clipboard." if plan.type == "command" else "Content copied to clipboard.")
+        return 0
+    if plan.type != "command":
+        # Text tasks never execute and never need an interactive confirmation.
         return 0
     if args.yes:
         if plan.risk == "high":
@@ -258,6 +286,8 @@ def evaluate_command(argv: Sequence[str]) -> int:
     eval_parser.add_argument("--base-url", help="临时覆盖 API base URL")
     eval_parser.add_argument("--backend", choices=["auto", "llama-cpp", "mlx", "server"])
     eval_parser.add_argument("--model-path")
+    eval_parser.add_argument("--task", choices=["command", "translate", "answer"], default="command", help="评估任务类型")
+    eval_parser.add_argument("--to", dest="target_language", help="翻译评估的目标语言")
     eval_parser.add_argument("--config", type=Path)
     eval_parser.add_argument("--lang", choices=["zh", "en"])
     eval_parser.add_argument("--locale", action="append", choices=["zh", "en", "mixed"], help="只测指定语言，可重复")
@@ -271,16 +301,34 @@ def evaluate_command(argv: Sequence[str]) -> int:
             provider = local_provider(config, args.backend, args.model_path)
         else:
             provider = APIProvider(config, args.model, args.base_url)
-        result = run_evaluation(provider, args.cases, args.output, args.locale, args.limit, args.verbose)
+        if args.task == "command":
+            result = run_evaluation(provider, args.cases, args.output, args.locale, args.limit, args.verbose)
+        else:
+            result = run_task_evaluation(
+                provider,
+                args.cases,
+                args.task,
+                args.output,
+                args.locale,
+                args.limit,
+                args.verbose,
+                language,
+                args.target_language,
+            )
     except (RuntimeError, ValueError, OSError) as exc:
         print(f"评估失败：{exc}" if language == "zh" else f"Evaluation failed: {exc}", file=sys.stderr)
         return 2
-    print_report(result, language)
+    if args.task == "command":
+        print_report(result, language)
+    else:
+        print_task_report(result, language)
     if args.output:
         print(f"\nJSON: {args.output}")
     if result["summary"]["errors"] == result["summary"]["cases"]:
         return 2
-    return 0 if result["summary"]["critical_false_calls"] == 0 else 1
+    if args.task == "command":
+        return 0 if result["summary"]["critical_false_calls"] == 0 else 1
+    return 0 if result["summary"]["text_exact"] == result["summary"]["cases"] else 1
 
 
 def model_command(argv: Sequence[str]) -> int:
@@ -313,6 +361,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return evaluate_command(raw[1:])
     if raw and raw[0] == "model":
         return model_command(raw[1:])
+    if raw and raw[0] in {"translate", "ask"}:
+        alias_task = "translate" if raw[0] == "translate" else "answer"
+        raw = ["--task", alias_task, *raw[1:]]
     args = parser().parse_args(raw)
     if args.copy and args.print_only:
         parser().error("`--copy` 与 `--print` 不能同时使用")
@@ -324,6 +375,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         parser().print_help()
         return 2
     request = " ".join(args.request)
+    task = args.task
+    if args.target_language:
+        if task not in {"auto", "translate"}:
+            parser().error("`--to` 只能与 translate 任务一起使用")
+        task = "translate"
     platform = platform_name()
     if platform == "other":
         print("当前平台不受支持。", file=sys.stderr)
@@ -332,7 +388,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         provider_started = time.perf_counter()
         provider = provider_for(config, args.local, args.api, args.offline, args.backend, args.model_path)
         provider_init_ms = (time.perf_counter() - provider_started) * 1000
-        plan = plan_request(provider, request, platform, language)
+        plan = plan_request(provider, request, platform, language, task, args.target_language)
         if plan.timing_ms is not None:
             plan.timing_ms = {
                 "config_ms": round(config_ms, 3),

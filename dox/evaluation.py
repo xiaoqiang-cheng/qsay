@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import platform
 import statistics
+import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from .providers import Provider, extract_tool_call, message_timing, message_usage
+from .providers import Provider, extract_tool_call, message_content, message_timing, message_usage, task_system_prompt
+from .schema import PlanError, parse_response
 
 
 TOOLS: List[Dict[str, Any]] = [
@@ -38,6 +41,22 @@ SYSTEM_PROMPT = (
 
 def default_cases_path() -> Path:
     return Path(__file__).with_name("cases.jsonl")
+
+
+def _runtime_platform() -> str:
+    if sys.platform == "darwin":
+        return "macos"
+    if os.name == "nt":
+        return "windows"
+    if sys.platform.startswith("linux"):
+        return "linux"
+    return "other"
+
+
+def _runtime_shell(platform_name: str) -> str:
+    if platform_name == "windows":
+        return "powershell"
+    return os.environ.get("SHELL", "sh")
 
 
 def load_cases(path: Path) -> List[Dict[str, Any]]:
@@ -199,6 +218,156 @@ def run_evaluation(
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return result
+
+
+def _normalize_text(value: Any) -> str:
+    return " ".join(str(value or "").split()).strip().casefold()
+
+
+def run_task_evaluation(
+    provider: Provider,
+    cases_path: Path,
+    task: str,
+    output: Optional[Path] = None,
+    locales: Optional[Iterable[str]] = None,
+    limit: Optional[int] = None,
+    verbose: bool = False,
+    language: str = "zh",
+    target_language: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Evaluate structured translation or answer responses.
+
+    Cases use ``expected_text`` for exact normalized matching, or
+    ``expected_contains`` for answers where several phrasings are acceptable.
+    """
+    if task not in {"translate", "answer"}:
+        raise ValueError("文本评估任务必须是 translate 或 answer")
+    cases = load_cases(cases_path)
+    locale_set = {item.lower() for item in locales or []}
+    if locale_set:
+        cases = [case for case in cases if str(case.get("locale", "")).lower() in locale_set]
+    if limit is not None:
+        cases = cases[: max(limit, 0)]
+    if not cases:
+        raise ValueError("过滤后没有评估用例")
+
+    platform_name = _runtime_platform()
+    shell = _runtime_shell(platform_name)
+    rows: List[Dict[str, Any]] = []
+    wall_start = time.perf_counter()
+    for case in cases:
+        messages = [
+            {"role": "system", "content": task_system_prompt(platform_name, shell, language, task, target_language)},
+            {"role": "user", "content": case["request"]},
+        ]
+        started = time.perf_counter()
+        error: Optional[str] = None
+        actual_type: Optional[str] = None
+        actual_text: Optional[str] = None
+        usage = None
+        provider_timing = None
+        try:
+            message = provider.complete(messages, max_tokens=256)
+            plan = parse_response(message_content(message), platform_name, language, expected_type=task)
+            actual_type = plan.type
+            actual_text = plan.text
+            usage = message_usage(message)
+            provider_timing = message_timing(message)
+        except (Exception,) as exc:  # Per-case errors belong in the report.
+            error = str(exc)
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        expected_text = case.get("expected_text")
+        expected_contains = case.get("expected_contains")
+        type_exact = actual_type == task
+        if isinstance(expected_text, str):
+            text_exact = type_exact and _normalize_text(actual_text) == _normalize_text(expected_text)
+        elif isinstance(expected_contains, str):
+            text_exact = type_exact and _normalize_text(expected_contains) in _normalize_text(actual_text)
+        elif isinstance(expected_contains, list):
+            text_exact = type_exact and all(
+                _normalize_text(item) in _normalize_text(actual_text) for item in expected_contains
+            )
+        else:
+            text_exact = type_exact and bool(_normalize_text(actual_text))
+        if error:
+            type_exact = False
+            text_exact = False
+        rows.append({
+            **case,
+            "elapsed_ms": round(elapsed_ms, 3),
+            "actual": {"type": actual_type, "text": actual_text},
+            "token_usage": usage,
+            "timing_ms": {"request_ms": round(elapsed_ms, 3), **(provider_timing or {})},
+            "type_exact": type_exact,
+            "text_exact": text_exact,
+            "error": error,
+        })
+
+    latencies = [row["elapsed_ms"] for row in rows]
+    token_totals = {
+        key: sum((row.get("token_usage") or {}).get(key) or 0 for row in rows)
+        for key in ("input_tokens", "output_tokens", "total_tokens")
+    }
+    summary: Dict[str, Any] = {
+        "provider": provider.name,
+        "model": getattr(provider, "model", None) or getattr(provider, "model_name", None),
+        "task": task,
+        "platform": platform.platform(),
+        "cases": len(rows),
+        "type_exact": sum(row["type_exact"] for row in rows),
+        "type_exact_rate": sum(row["type_exact"] for row in rows) / len(rows),
+        "text_exact": sum(row["text_exact"] for row in rows),
+        "text_exact_rate": sum(row["text_exact"] for row in rows) / len(rows),
+        "errors": sum(row["error"] is not None for row in rows),
+        "token_usage": token_totals,
+        "evaluation_ms": round((time.perf_counter() - wall_start) * 1000, 3),
+        "latency_ms": {
+            "p50": round(statistics.median(latencies), 3),
+            "p95": round(percentile(latencies, 0.95), 3),
+            "mean": round(statistics.mean(latencies), 3),
+        },
+    }
+    result = {"summary": summary, "rows": rows}
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if verbose:
+        for index, row in enumerate(rows, 1):
+            mark = "✓" if row["text_exact"] else "✗"
+            print(f"[{index:>3}/{len(rows)}] {mark} {row['id']:<24} {row['elapsed_ms']:>8.1f}ms")
+    return result
+
+
+def print_task_report(result: Dict[str, Any], language: str = "zh") -> None:
+    summary = result["summary"]
+    rows = result["rows"]
+    title = "dox 文本任务评估" if language == "zh" else "dox text-task evaluation"
+    print(f"\n{title}")
+    print("=" * len(title))
+    print(f"Provider: {summary['provider']}")
+    if summary.get("model"):
+        print(f"Model:    {summary['model']}")
+    print(f"Task:     {summary['task']}")
+    print(f"Cases:    {summary['cases']}")
+    print()
+    print("Metric                  Result")
+    print("----------------------  ----------------")
+    print(f"Type exact match        {summary['type_exact']}/{summary['cases']} ({summary['type_exact_rate']:.1%})")
+    print(f"Text match              {summary['text_exact']}/{summary['cases']} ({summary['text_exact_rate']:.1%})")
+    print(f"Request errors          {summary['errors']}")
+    tokens = summary.get("token_usage") or {}
+    print(f"Tokens input / output   {tokens.get('input_tokens', 0)} / {tokens.get('output_tokens', 0)}")
+    latency = summary["latency_ms"]
+    print(f"Latency p50 / p95       {latency['p50']:.1f} / {latency['p95']:.1f} ms")
+
+    failures = [row for row in rows if not row["text_exact"] or row["error"]]
+    if failures:
+        print("\nFailures")
+        print("--------")
+        for row in failures:
+            actual = row.get("actual") or {}
+            detail = row.get("error") or actual.get("text") or "NO_TEXT"
+            print(f"{row['id'][:23]:<23}  {detail[:60]}")
 
 
 def print_report(result: Dict[str, Any], language: str = "zh") -> None:

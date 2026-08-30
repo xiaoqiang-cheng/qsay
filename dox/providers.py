@@ -22,25 +22,68 @@ DEFAULT_GGUF_REPO = "unsloth/Qwen3-0.6B-GGUF"
 
 
 PLAN_SCHEMA = (
-    '{"intent":string,"command":string,"shell":string,'
+    '{"type":"command","intent":string,"command":string,"shell":string,'
     '"risk":"read_only"|"write"|"high","assumptions":[string],'
     '"tools":[string],"clarification":string|null}'
 )
 
+RESPONSE_SCHEMA = (
+    '{"type":"command"|"translate"|"answer","intent":string|null,'
+    '"command":string|null,"text":string|null,"target_language":string|null,'
+    '"shell":string|null,"risk":"read_only"|"write"|"high",'
+    '"assumptions":[string],"tools":[string],"clarification":string|null}'
+)
+
 
 def command_system_prompt(platform: str, shell: str, language: str) -> str:
+    return task_system_prompt(platform, shell, language, "command")
+
+
+def task_system_prompt(
+    platform: str,
+    shell: str,
+    language: str,
+    task: str = "auto",
+    target_language: Optional[str] = None,
+) -> str:
     language_name = "Chinese" if language == "zh" else "English"
+    task = task.strip().lower()
+    if task == "command":
+        task_instruction = (
+            "The requested task is command generation. Set type=command and fill command; "
+            "do not return a translation or general answer."
+        )
+    elif task == "translate":
+        target_instruction = (
+            f"Use target_language={target_language}. " if target_language else
+            "Infer target_language only when the user explicitly states it; otherwise ask for it. "
+        )
+        task_instruction = (
+            "The requested task is translation. Set type=translate, put only the translated text "
+            f"in text, and never produce a shell command. {target_instruction}"
+        )
+    elif task == "answer":
+        task_instruction = (
+            "The requested task is a short question answer. Set type=answer, put a concise, "
+            "direct answer in text, and never produce a shell command."
+        )
+    else:
+        task_instruction = (
+            "Classify the request as exactly one type: command for a terminal operation, "
+            "translate for translating text, or answer for a short factual/explanatory answer. "
+            "Do not use keywords or external tools; decide from the request meaning."
+        )
     return (
-        "You are dox, a natural-language command router. Return exactly one JSON "
+        "You are dox, a natural-language terminal assistant. Return exactly one JSON "
         "object and no markdown. Do not use a reasoning mode, provide chain-of-thought, "
         "or write long explanations; output the final JSON immediately. "
-        "Understand the user's request and propose one command for the current "
-        "environment. If the request is ambiguous or unsafe to complete reliably, "
-        "set clarification to a concise question and command to an empty string. "
-        f"JSON schema: {PLAN_SCHEMA}. The command must target platform={platform}, "
+        f"{task_instruction} If the request is ambiguous or unsafe to complete reliably, "
+        "set clarification to a concise question and leave command and text empty. "
+        f"JSON schema: {RESPONSE_SCHEMA}. For command tasks, the command must target platform={platform}, "
         f"shell={shell}, user interface language={language_name}. Never include "
         "secrets or pretend to have run the command. Keep every value concise; "
-        "use an empty assumptions array unless an assumption is essential."
+        "use an empty assumptions array unless an assumption is essential. "
+        "For translate and answer, return only the requested text without preamble."
     )
 
 
