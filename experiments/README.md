@@ -26,4 +26,31 @@ Apple Silicon 上可使用 `mlx-lm`，跨平台发布仍建议转换为 GGUF 后
 {"name":"tool_name","arguments":{"key":"value"}}
 ```
 
+Qwen3-0.6B 的 MLX 实验（需要 Apple Silicon）：
+
+```bash
+.venv/bin/pip install 'mlx-lm==0.29.1'
+HF_ENDPOINT=https://hf-mirror.com HF_HUB_DISABLE_XET=1 \
+  .venv/bin/python -m mlx_lm.convert --hf-path Qwen/Qwen3-0.6B -q \
+  --q-bits 4 --q-group-size 64 --mlx-path experiments/models/qwen3-0.6b-4bit
+.venv/bin/python experiments/qwen_eval.py \
+  --model experiments/models/qwen3-0.6b-4bit \
+  --output experiments/results/qwen3-0.6b-4bit.json
+```
+
+评测关闭 thinking、使用 greedy decoding，并通过 Qwen 的 `<tool_call>` 模板解析输出。该脚本是质量实验，不代表最终跨平台运行时；Windows/Linux 需要使用 llama.cpp/GGUF 或其他 CPU backend 做同等复测。
+
 评测报告应同时记录模型版本、量化格式、冷启动/热运行 p50/p95、峰值 RSS、模型包大小和许可证。任何 `negative`、`irrelevant` 或不允许的 `dangerous` 用例产生调用，都算 critical false-call。
+
+LFM2.5-1.2B 的跨平台 GGUF 实验：
+
+```bash
+.venv/bin/pip install 'llama-cpp-python==0.3.16'
+HF_ENDPOINT=https://hf-mirror.com HF_HUB_DISABLE_XET=1 \
+  .venv/bin/python -c 'from huggingface_hub import hf_hub_download; hf_hub_download("LiquidAI/LFM2.5-1.2B-Instruct-GGUF", "LFM2.5-1.2B-Instruct-Q4_K_M.gguf", local_dir="experiments/models/lfm2.5-1.2b-gguf")'
+.venv/bin/python experiments/lfm_eval.py \
+  --model experiments/models/lfm2.5-1.2b-gguf/LFM2.5-1.2B-Instruct-Q4_K_M.gguf \
+  --output experiments/results/lfm2.5-1.2b-q4-k-m.json
+```
+
+该模型按官方文档偏好输出 Pythonic tool call；脚本同时兼容其偶发的 JSON list 输出。这里明确限制 `n_gpu_layers=0`，测的是 CPU 路径。
