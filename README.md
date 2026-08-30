@@ -2,7 +2,7 @@
 
 轻量、模型优先的自然语言命令路由器。输入一句话，dox 使用本地 Qwen3-0.6B 或 OpenAI-compatible API 生成结构化命令计划，展示风险并在确认后执行。
 
-当前实现已经全部迁移到 Python。默认 Provider 是本地 Qwen3-0.6B；macOS、Linux 和 Windows 共用 GGUF + llama.cpp 路径，Apple Silicon 可以显式选择 MLX 加速。Windows 只支持 PowerShell，不支持 `cmd.exe`。
+当前实现已经全部迁移到 Python。默认 Provider 是 OpenAI-compatible API，以优先获得更高的命令准确率和更低延迟；本地 Qwen3-0.6B 是显式的离线选项。macOS、Linux 和 Windows 共用 GGUF + llama.cpp 路径，Apple Silicon 可以选择 MLX 加速。Windows 只支持 PowerShell，不支持 `cmd.exe`。
 
 ## 安装
 
@@ -20,7 +20,7 @@ py -m venv .venv
 .venv\Scripts\python -m pip install -e ".[local,dev]"
 ```
 
-安装完成后可直接运行 `dox`。只使用 API、不安装本地推理依赖时，执行 `python -m pip install -e .`。
+安装完成后可直接运行 `dox`。默认 API 模式不需要本地推理依赖，可执行 `python -m pip install -e .`；需要离线模式时再安装 `.[local]`。
 
 ### 本地模型
 
@@ -40,7 +40,16 @@ dox config --global local.model-path /path/to/Qwen3-0.6B-Q4_K_M.gguf
 
 ## 使用
 
-默认完全离线，第一次推理需要加载模型：
+默认使用 API。首次使用先配置 OpenAI-compatible endpoint、模型名和 API Key 环境变量：
+
+```bash
+dox config --global llm.base-url https://api.openai.com/v1
+dox config --global llm.model gpt-4o-mini
+dox config --global llm.api-key-env OPENAI_API_KEY
+export OPENAI_API_KEY="你的 API Key"
+```
+
+未配置时，dox 会打印上述配置方法，不会自动回退到准确率未达门槛的本地模型。配置完成后：
 
 ```bash
 dox "解压 backup.tar 到 ./backup"
@@ -55,7 +64,7 @@ dox --json "查看当前 git 状态"
 - `--copy`：复制命令
 - `--yes`：跳过普通确认，高风险命令除外
 - `--local` / `--offline`：强制本地模型
-- `--api`：强制 API Provider
+- `--api`：强制 API Provider（当前默认）
 - `--backend llama-cpp|mlx|server`：临时选择本地 backend
 - `--model-path PATH`：临时指定本地模型
 - `--lang zh|en`：设置界面语言，默认中文
@@ -88,7 +97,7 @@ dox config --global local.model Qwen3-0.6B
 
 ## API Provider
 
-配置方式保持 Git 风格，API Key 只从环境变量读取：
+配置方式保持 Git 风格，API Key 只从环境变量读取。由于 API 是默认 Provider，正常使用时无需再添加 `--api`：
 
 ```bash
 dox config --global llm.base-url https://api.openai.com/v1
@@ -96,7 +105,7 @@ dox config --global llm.model gpt-4o-mini
 dox config --global llm.api-key-env OPENAI_API_KEY
 export OPENAI_API_KEY="你的 API Key"
 
-dox --api --print "解压 backup.tar 到 ./backup"
+dox --print "解压 backup.tar 到 ./backup"
 ```
 
 API Provider 接受 OpenAI-compatible `/chat/completions` 接口。
@@ -148,7 +157,7 @@ dox eval --api --cases ./my-cases.jsonl
 ```bash
 dox config --list
 dox config --global core.language en
-dox config --global llm.provider local
+dox config --global llm.provider api
 dox config --global local.backend auto
 dox config --unset --global local.model-path
 ```
@@ -160,7 +169,7 @@ dox config --unset --global local.model-path
 language = "zh"
 
 [llm]
-provider = "local"
+provider = "api"
 base-url = "https://api.openai.com/v1"
 model = "gpt-4o-mini"
 api-key-env = "OPENAI_API_KEY"

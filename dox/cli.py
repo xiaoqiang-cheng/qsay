@@ -174,7 +174,7 @@ def evaluate_command(argv: Sequence[str]) -> int:
     eval_parser = argparse.ArgumentParser(prog="dox eval", description="评估本地或 API LLM 的工具路由准确率")
     providers = eval_parser.add_mutually_exclusive_group()
     providers.add_argument("--api", action="store_true", help="测试 API LLM")
-    providers.add_argument("--local", action="store_true", help="测试本地模型（默认）")
+    providers.add_argument("--local", action="store_true", help="测试本地模型")
     eval_parser.add_argument("--cases", type=Path, default=default_cases_path())
     eval_parser.add_argument("--output", type=Path, help="保存完整 JSON 报告")
     eval_parser.add_argument("--model", help="临时覆盖 API 模型名")
@@ -191,10 +191,10 @@ def evaluate_command(argv: Sequence[str]) -> int:
     config = load_config(args.config)
     language = args.lang or config.language
     try:
-        if args.api:
-            provider = APIProvider(config, args.model, args.base_url, args.api_key_env)
-        else:
+        if args.local or (not args.api and config.provider.lower() == "local"):
             provider = local_provider(config, args.backend, args.model_path)
+        else:
+            provider = APIProvider(config, args.model, args.base_url, args.api_key_env)
         result = run_evaluation(provider, args.cases, args.output, args.locale, args.limit, args.verbose)
     except (RuntimeError, ValueError, OSError) as exc:
         print(f"评估失败：{exc}" if language == "zh" else f"Evaluation failed: {exc}", file=sys.stderr)

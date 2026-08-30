@@ -213,7 +213,7 @@ dox --backend server        本机常驻服务后端
 2. 在 llama.cpp Qwen GGUF CPU 路径复测冷启动、p50/p95、RSS，验证 Windows/Linux 可交付性。
 3. 实现确定性参数证据校验和危险路径拦截，再复算端到端 critical false-call。
 4. 以同一训练集比较 Qwen3-0.6B LoRA 与 FunctionGemma-270M 专项微调；后者只有在显著缩小包体且质量不降时才值得采用。
-5. 在达到决策门前，将本地 Provider 明确标记为需要人工审查的 MVP；API Provider 作为可比较、可选的质量路径。
+5. 在达到决策门前，将本地 Provider 明确标记为需要人工审查的 MVP；API Provider 作为默认质量路径。
 
 ### 6.1 Prompt 对照结论
 

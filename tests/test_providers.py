@@ -1,7 +1,10 @@
 import json
 import os
+from pathlib import Path
 
-from dox.providers import chat_endpoint, extract_tool_call, resolve_local_backend, suppress_native_output
+import pytest
+
+from dox.providers import APIProvider, chat_endpoint, extract_tool_call, resolve_local_backend, suppress_native_output
 from dox.config import Config, load_values
 
 
@@ -43,3 +46,26 @@ def test_suppresses_native_stderr_by_default(capfd, monkeypatch):
     _, stderr = capfd.readouterr()
     assert "native-noise" not in stderr
     assert "visible-error" in stderr
+
+
+def test_api_provider_explains_initial_configuration():
+    config = Config.from_values(load_values(Path("/missing-dox-config")))
+    with pytest.raises(RuntimeError) as error:
+        APIProvider(config)
+    message = str(error.value)
+    assert "dox config --global llm.model" in message
+    assert "dox --local" in message
+
+
+def test_api_provider_explains_missing_key(monkeypatch):
+    values = load_values(Path("/missing-dox-config"))
+    values["llm.model"] = "demo"
+    values["llm.api-key-env"] = "DOX_TEST_API_KEY"
+    config = Config.from_values(values)
+    provider = APIProvider(config)
+    monkeypatch.delenv("DOX_TEST_API_KEY", raising=False)
+    with pytest.raises(RuntimeError) as error:
+        provider.complete([{"role": "user", "content": "hello"}])
+    message = str(error.value)
+    assert "export DOX_TEST_API_KEY" in message
+    assert "$env:DOX_TEST_API_KEY" in message

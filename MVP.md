@@ -129,7 +129,7 @@ Provider.complete(messages, tools?, max_tokens) -> assistant message
 ```
 
 - `local`：完全离线，适合隐私、断网和低成本场景
-- `api`：OpenAI-compatible `/chat/completions`，可作为默认高质量快速路径
+- `api`：默认；OpenAI-compatible `/chat/completions`，作为当前高质量快速路径
 - API Key 只从用户指定的环境变量读取
 - 请求只包含当前自然语言请求、必要的目标平台信息和工具 Schema，不默认发送项目内容或历史
 
@@ -168,20 +168,20 @@ MVP 默认采用进程内 `llama-cpp-python`：概念和安装路径最简单，
 - 当前目录：`./.dox/config`
 
 ```bash
+dox config --global llm.provider api
+dox config --global llm.base-url https://api.openai.com/v1
+dox config --global llm.model gpt-4o-mini
+dox config --global llm.api-key-env OPENAI_API_KEY
+```
+
+API 尚未配置时，dox 必须打印可直接复制的配置命令和 API Key 环境变量示例，不自动回退到本地模型。离线模式显式配置：
+
+```bash
 dox config --global llm.provider local
 dox config --global local.backend auto
 dox config --global local.model-path /path/to/Qwen3-0.6B-Q4_K_M.gguf
 dox config --global core.language zh
 dox config --list
-```
-
-API 示例：
-
-```bash
-dox config --global llm.base-url https://api.openai.com/v1
-dox config --global llm.model gpt-4o-mini
-dox config --global llm.api-key-env OPENAI_API_KEY
-dox --api --print "查看 git 状态"
 ```
 
 ## 8. 评估模式
@@ -264,7 +264,8 @@ MVP 只加载内置能力和用户本地文件。这里的“远程 Adapter 包�
 ### P0：Python 模型闭环（当前）
 
 - Python CLI 与 Git 风格配置
-- 默认本地 Qwen3-0.6B
+- 默认 OpenAI-compatible API；未配置时输出配置指引
+- 本地 Qwen3-0.6B 离线 Provider
 - llama.cpp、MLX、server 三种本地 backend
 - OpenAI-compatible API Provider
 - 命令计划展示、复制、确认和执行
@@ -309,12 +310,12 @@ MVP 只加载内置能力和用户本地文件。这里的“远程 Adapter 包�
 已确定：
 
 - 全部切换到 Python 3.9+
-- 本地模型默认候选为 Qwen3-0.6B；产品默认 Provider 是否在线由评估决定
+- 产品默认 Provider 为 OpenAI-compatible API；本地模型默认候选为 Qwen3-0.6B
 - 跨平台默认为 GGUF + llama.cpp
 - Apple Silicon 可选 MLX，连续调用可选本地 server
 - Windows 只支持 PowerShell
 - 默认中文，同时支持英文和混合输入
-- API Provider 可选，离线能力不依赖 API
+- API Provider 默认，本地离线能力不依赖 API
 - 不用关键词规则承担意图识别
 - 增加本地/API 共用的评估模式和 JSON 报表
 

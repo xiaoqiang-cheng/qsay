@@ -111,14 +111,27 @@ class APIProvider(Provider):
         self.api_key_env = config.api_key_env if api_key_env is None else api_key_env
         self.timeout = config.timeout_seconds
         if not self.model:
-            raise RuntimeError("尚未配置 API 模型；请设置 `llm.model`")
+            raise RuntimeError(
+                "尚未配置 API。请运行：\n"
+                "  dox config --global llm.base-url https://api.openai.com/v1\n"
+                "  dox config --global llm.model YOUR_MODEL\n"
+                "  dox config --global llm.api-key-env OPENAI_API_KEY\n"
+                "然后设置环境变量 `OPENAI_API_KEY`。也可以使用 `dox --local ...` "
+                "切换到本地模型。"
+            )
 
     def complete(self, messages: List[Dict[str, str]], tools: Optional[List[Dict[str, Any]]] = None, max_tokens: int = 256) -> Dict[str, Any]:
         key = None
         if self.api_key_env:
             key = os.environ.get(self.api_key_env)
             if key is None:
-                raise RuntimeError(f"环境变量 `{self.api_key_env}` 未设置")
+                raise RuntimeError(
+                    f"API Key 环境变量 `{self.api_key_env}` 未设置。\n"
+                    f'macOS/Linux：export {self.api_key_env}="你的 API Key"\n'
+                    f'PowerShell：$env:{self.api_key_env}="你的 API Key"\n'
+                    "如需更换变量名，请运行：\n"
+                    "  dox config --global llm.api-key-env <环境变量名>"
+                )
         return post_chat(self.base_url, self.model, messages, self.timeout, key, tools, 0.0, max_tokens)
 
 

@@ -9,7 +9,7 @@ from typing import Dict, Iterable, Optional
 
 DEFAULTS = {
     "core.language": "zh",
-    "llm.provider": "local",
+    "llm.provider": "api",
     "llm.base-url": "https://api.openai.com/v1",
     "llm.model": "",
     "llm.api-key-env": "OPENAI_API_KEY",
@@ -138,7 +138,7 @@ class Config:
             timeout = 60.0
         return cls(
             language=values.get("core.language", "zh"),
-            provider=values.get("llm.provider", "local"),
+            provider=values.get("llm.provider", "api"),
             base_url=values.get("llm.base-url", "https://api.openai.com/v1"),
             model=values.get("llm.model", ""),
             api_key_env=values.get("llm.api-key-env", "OPENAI_API_KEY"),
@@ -235,8 +235,11 @@ def print_config_help() -> None:
   dox config --unset KEY
 
 示例：
+  dox config --global llm.provider api
+  dox config --global llm.base-url https://api.openai.com/v1
+  dox config --global llm.model gpt-4o-mini
+  dox config --global llm.api-key-env OPENAI_API_KEY
   dox config --global llm.provider local
   dox config --global local.backend auto
   dox config --global local.model-path /path/to/Qwen3-0.6B-Q4_K_M.gguf
-  dox config --global llm.model gpt-4o-mini
   dox config --global core.language zh""")
