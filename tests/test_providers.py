@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from dox.providers import APIProvider, chat_endpoint, extract_tool_call, resolve_local_backend, suppress_native_output
+from dox.providers import APIProvider, chat_endpoint, extract_tool_call, normalize_usage, resolve_local_backend, suppress_native_output
 from dox.config import Config, load_values
 
 
@@ -12,6 +12,14 @@ def test_chat_endpoint():
     assert chat_endpoint("https://example.test/v1") == "https://example.test/v1/chat/completions"
     full = "https://example.test/v1/chat/completions"
     assert chat_endpoint(full) == full
+
+
+def test_normalizes_openai_token_usage():
+    assert normalize_usage({"prompt_tokens": 21, "completion_tokens": 7}) == {
+        "input_tokens": 21,
+        "output_tokens": 7,
+        "total_tokens": 28,
+    }
 
 
 def test_extracts_openai_tool_call():

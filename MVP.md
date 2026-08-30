@@ -132,6 +132,9 @@ Provider.complete(messages, tools?, max_tokens) -> assistant message
 - `api`：默认；OpenAI-compatible `/chat/completions`，作为当前高质量快速路径
 - API Key 只从用户指定的环境变量读取
 - 请求只包含当前自然语言请求、必要的目标平台信息和工具 Schema，不默认发送项目内容或历史
+- API 默认使用零温度、短输出和无思考过程提示；API 服务是否支持真正关闭隐藏 reasoning 取决于服务商，没有跨供应商统一参数
+- llama.cpp/server 追加 Qwen 的 `/no_think`，MLX 显式使用 `enable_thinking=False`
+- Provider 返回的 token 用量进入计划的 `token_usage`，供交互展示和 JSON/评估报表使用
 
 ## 6. 默认本地模型与跨平台方案
 
@@ -184,6 +187,8 @@ dox config --global core.language zh
 dox config --list
 ```
 
+macOS/Linux 的全局配置文件是 `~/.doxconfig`，Windows 是 `%USERPROFILE%\.doxconfig`；项目级文件是当前目录的 `.dox/config`。文件只在用户执行对应的配置写入命令后创建。
+
 ## 8. 评估模式
 
 命令：
@@ -200,6 +205,7 @@ dox eval --api --output reports/api.json --verbose
 - negative、irrelevant 和危险拒绝场景的 critical false-call
 - 单条请求错误数
 - p50、p95 和平均延迟
+- 输入、输出和总 token 用量
 - 失败明细与完整 JSON 行级结果
 
 可通过 `--cases` 使用自定义数据集，通过可重复的 `--locale` 筛选 `zh`、`en`、`mixed`，通过 `--limit` 做冒烟测试。单条失败不会中止整份报告。

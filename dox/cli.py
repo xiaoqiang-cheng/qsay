@@ -13,7 +13,7 @@ from typing import Optional, Sequence
 from . import __version__
 from .config import Config, config_command, load_config
 from .evaluation import default_cases_path, print_report, run_evaluation
-from .providers import APIProvider, Provider, command_system_prompt, download_default_model, local_provider, message_content
+from .providers import APIProvider, Provider, command_system_prompt, download_default_model, local_provider, message_content, message_usage
 from .schema import Plan, PlanError, default_shell, parse_plan
 
 
@@ -70,7 +70,33 @@ def plan_request(provider: Provider, request: str, platform: str, language: str)
         {"role": "user", "content": request},
     ]
     message = provider.complete(messages, max_tokens=256)
-    return parse_plan(message_content(message), platform, language)
+    plan = parse_plan(message_content(message), platform, language)
+    plan.token_usage = message_usage(message)
+    return plan
+
+
+def show_token_usage(usage: Optional[dict], language: str) -> None:
+    if usage:
+        input_tokens = usage.get("input_tokens")
+        output_tokens = usage.get("output_tokens")
+        total_tokens = usage.get("total_tokens")
+        suffix = "（估算）" if usage.get("estimated") else ""
+        if language == "zh":
+            print(
+                f"Token{suffix}：输入 {input_tokens if input_tokens is not None else '未知'}，"
+                f"输出 {output_tokens if output_tokens is not None else '未知'}，"
+                f"总计 {total_tokens if total_tokens is not None else '未知'}"
+            )
+        else:
+            print(
+                f"Tokens{suffix}: input {input_tokens if input_tokens is not None else 'unknown'}, "
+                f"output {output_tokens if output_tokens is not None else 'unknown'}, "
+                f"total {total_tokens if total_tokens is not None else 'unknown'}"
+            )
+    elif language == "zh":
+        print("Token：服务未返回用量")
+    else:
+        print("Tokens: usage was not returned by the provider")
 
 
 def risk_label(risk: str, language: str) -> str:
@@ -90,6 +116,7 @@ def show_plan(plan: Plan, language: str, explain: bool = False) -> None:
             print(f"Shell：{plan.shell}")
         print(f"假设：{'；'.join(plan.assumptions)}")
         print(f"风险：{risk_label(plan.risk, language)}")
+        show_token_usage(plan.token_usage, language)
     else:
         print(f"Intent: {plan.intent}")
         print(f"Command: {plan.command}")
@@ -98,6 +125,7 @@ def show_plan(plan: Plan, language: str, explain: bool = False) -> None:
             print(f"Shell: {plan.shell}")
         print(f"Assumptions: {'; '.join(plan.assumptions)}")
         print(f"Risk: {risk_label(plan.risk, language)}")
+        show_token_usage(plan.token_usage, language)
 
 
 def copy_command(command: str, platform: str) -> None:
@@ -124,6 +152,7 @@ def finish_plan(plan: Plan, args: argparse.Namespace, language: str, platform: s
     if plan.clarification:
         prefix = "需要补充信息" if language == "zh" else "More information is needed"
         print(f"{prefix}：{plan.clarification}")
+        show_token_usage(plan.token_usage, language)
         return 1
     if args.json:
         print(json.dumps(plan.to_dict(), ensure_ascii=False))

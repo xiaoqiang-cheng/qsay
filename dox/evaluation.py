@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from .providers import Provider, extract_tool_call
+from .providers import Provider, extract_tool_call, message_usage
 
 
 TOOLS: List[Dict[str, Any]] = [
@@ -108,8 +108,10 @@ def run_evaluation(
         try:
             message = provider.complete(messages, OPENAI_TOOLS, max_tokens=96)
             actual = extract_tool_call(message)
+            usage = message_usage(message)
         except Exception as exc:  # Per-case errors belong in the report.
             actual = None
+            usage = None
             error = str(exc)
         elapsed_ms = (time.perf_counter() - start) * 1000
         tool_exact, args_exact, critical = evaluate_call(actual, case)
@@ -122,6 +124,7 @@ def run_evaluation(
             **case,
             "elapsed_ms": round(elapsed_ms, 3),
             "actual": actual,
+            "token_usage": usage,
             "tool_exact": tool_exact,
             "args_exact": args_exact,
             "critical_false_call": critical,
@@ -134,6 +137,10 @@ def run_evaluation(
 
     normal = [row for row in rows if row.get("class") == "normal"]
     latencies = [row["elapsed_ms"] for row in rows]
+    token_totals = {
+        key: sum((row.get("token_usage") or {}).get(key) or 0 for row in rows)
+        for key in ("input_tokens", "output_tokens", "total_tokens")
+    }
     summary = {
         "provider": provider.name,
         "model": getattr(provider, "model", None) or getattr(provider, "model_name", None),
@@ -145,6 +152,7 @@ def run_evaluation(
         "argument_exact_rate": sum(row["args_exact"] for row in normal) / len(normal) if normal else 0.0,
         "critical_false_calls": sum(row["critical_false_call"] for row in rows),
         "errors": sum(row["error"] is not None for row in rows),
+        "token_usage": token_totals,
         "latency_ms": {
             "p50": round(statistics.median(latencies), 3),
             "p95": round(percentile(latencies, 0.95), 3),
@@ -176,6 +184,8 @@ def print_report(result: Dict[str, Any], language: str = "zh") -> None:
     print(f"Argument exact (normal) {summary['argument_exact']}/{normal_count} ({summary['argument_exact_rate']:.1%})")
     print(f"Critical false-calls    {summary['critical_false_calls']}")
     print(f"Request errors          {summary['errors']}")
+    tokens = summary.get("token_usage") or {}
+    print(f"Tokens input / output   {tokens.get('input_tokens', 0)} / {tokens.get('output_tokens', 0)}")
     latency = summary["latency_ms"]
     print(f"Latency p50 / p95       {latency['p50']:.1f} / {latency['p95']:.1f} ms")
 

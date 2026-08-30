@@ -45,7 +45,10 @@ class Handler(BaseHTTPRequestHandler):
                 "clarification": None,
             }
             message = {"role": "assistant", "content": json.dumps(plan)}
-        data = json.dumps({"choices": [{"message": message}]}).encode()
+        data = json.dumps({
+            "choices": [{"message": message}],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16},
+        }).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))

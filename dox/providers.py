@@ -31,7 +31,8 @@ def command_system_prompt(platform: str, shell: str, language: str) -> str:
     language_name = "Chinese" if language == "zh" else "English"
     return (
         "You are dox, a natural-language command router. Return exactly one JSON "
-        "object and no markdown. Do not provide chain-of-thought or long explanations. "
+        "object and no markdown. Do not use a reasoning mode, provide chain-of-thought, "
+        "or write long explanations; output the final JSON immediately. "
         "Understand the user's request and propose one command for the current "
         "environment. If the request is ambiguous or unsafe to complete reliably, "
         "set clarification to a concise question and command to an empty string. "
@@ -91,7 +92,49 @@ def post_chat(
         raise RuntimeError("API 响应中缺少 choices[0].message") from exc
     if not isinstance(message, dict):
         raise RuntimeError("API message 不是 JSON object")
+    message = dict(message)
+    usage = normalize_usage(data.get("usage"))
+    if usage:
+        message["_usage"] = usage
     return message
+
+
+def normalize_usage(value: Any, estimated: bool = False) -> Optional[Dict[str, Any]]:
+    """Normalize common OpenAI/local usage fields for a stable CLI report."""
+    if not isinstance(value, dict):
+        return None
+
+    def integer(*keys: str) -> Optional[int]:
+        for key in keys:
+            item = value.get(key)
+            if isinstance(item, bool):
+                continue
+            if isinstance(item, int):
+                return item
+            if isinstance(item, float) and item.is_integer():
+                return int(item)
+        return None
+
+    input_tokens = integer("input_tokens", "prompt_tokens")
+    output_tokens = integer("output_tokens", "completion_tokens")
+    total_tokens = integer("total_tokens")
+    if total_tokens is None and input_tokens is not None and output_tokens is not None:
+        total_tokens = input_tokens + output_tokens
+    if input_tokens is None and output_tokens is None and total_tokens is None:
+        return None
+    result: Dict[str, Any] = {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+    }
+    if estimated:
+        result["estimated"] = True
+    return result
+
+
+def message_usage(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    value = message.get("_usage")
+    return value if isinstance(value, dict) else None
 
 
 class Provider(ABC):
@@ -231,7 +274,11 @@ class LlamaCppProvider(Provider):
             seed=0,
         )
         self._llm.reset()
-        return response["choices"][0]["message"]
+        message = dict(response["choices"][0]["message"])
+        usage = normalize_usage(response.get("usage"))
+        if usage:
+            message["_usage"] = usage
+        return message
 
 
 class ServerLocalProvider(Provider):
@@ -287,7 +334,20 @@ class MLXProvider(Provider):
             sampler=self._sampler,
             verbose=False,
         )
-        return {"role": "assistant", "content": content}
+        message: Dict[str, Any] = {"role": "assistant", "content": content}
+        try:
+            usage = normalize_usage(
+                {
+                    "input_tokens": len(self._tokenizer.encode(prompt)),
+                    "output_tokens": len(self._tokenizer.encode(content)),
+                },
+                estimated=True,
+            )
+        except (AttributeError, TypeError, ValueError):
+            usage = None
+        if usage:
+            message["_usage"] = usage
+        return message
 
 
 def local_provider(config: Config, backend: Optional[str] = None, model_path: Optional[str] = None) -> Provider:

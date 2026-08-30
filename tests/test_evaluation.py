@@ -24,6 +24,15 @@ class FakeProvider(Provider):
         return {"content": "NO_CALL"}
 
 
+class UsageFakeProvider(FakeProvider):
+    name = "usage-fake"
+
+    def complete(self, messages, tools=None, max_tokens=256):
+        message = super().complete(messages, tools, max_tokens)
+        message["_usage"] = {"input_tokens": 10, "output_tokens": 4, "total_tokens": 14}
+        return message
+
+
 def test_evaluate_call_detects_critical_false_call():
     case = {"class": "negative", "expected_tool": None, "expected_args": {}}
     tool_ok, args_ok, critical = evaluate_call({"name": "remove_path", "arguments": {"path": "build"}}, case)
@@ -69,6 +78,28 @@ def test_run_evaluation_and_json_report(tmp_path: Path):
     assert result["summary"]["tool_exact_rate"] == 1.0
     assert result["summary"]["critical_false_calls"] == 0
     assert json.loads(output.read_text())["summary"]["cases"] == 2
+
+
+def test_evaluation_report_sums_token_usage(tmp_path: Path):
+    cases = tmp_path / "cases.jsonl"
+    cases.write_text(
+        json.dumps({
+            "id": "ok",
+            "locale": "en",
+            "request": "extract a.tar into ./out",
+            "expected_tool": "extract_archive",
+            "expected_args": {"source": "a.tar", "destination": "./out"},
+            "class": "normal",
+        }) + "\n",
+        encoding="utf-8",
+    )
+    result = run_evaluation(UsageFakeProvider(), cases)
+    assert result["summary"]["token_usage"] == {
+        "input_tokens": 10,
+        "output_tokens": 4,
+        "total_tokens": 14,
+    }
+    assert result["rows"][0]["token_usage"]["total_tokens"] == 14
 
 
 class ErrorProvider(Provider):

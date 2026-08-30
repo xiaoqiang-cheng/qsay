@@ -110,6 +110,16 @@ dox --print "解压 backup.tar 到 ./backup"
 
 API Provider 接受 OpenAI-compatible `/chat/completions` 接口。
 
+默认请求使用 `temperature=0`、短输出上限和“只返回最终 JSON”的提示，不要求模型输出思考过程。对于本地 Qwen，llama.cpp/server 会追加 `/no_think`，MLX 使用 `enable_thinking=False`；通用 API 没有统一的隐藏推理开关，具体服务是否在内部推理由服务商和模型决定。
+
+普通交互输出会显示本轮 token 用量，例如：
+
+```text
+Token：输入 128，输出 18，总计 146
+```
+
+API 返回的用量是服务端统计值；MLX 若服务不提供统计，则显示本地 tokenizer 的估算值；Provider 没有返回用量时会明确显示“服务未返回用量”。`--print` 保持只输出命令，便于脚本使用；`--json` 会在 `token_usage` 字段中保留统计。
+
 ## 模型评估模式
 
 `dox eval` 使用相同工具 Schema、相同请求集比较本地模型和 API LLM，统计工具 exact match、正常请求参数 exact match、critical false-call、请求错误和 p50/p95 延迟。
@@ -138,6 +148,8 @@ dox eval --api --cases ./my-cases.jsonl
 
 评估返回码：无 critical false-call 时 `0`，存在 critical false-call 时 `1`，配置或整体请求失败时 `2`。即使单条 API 请求失败，报告仍会继续生成并记录错误。
 
+评估报表也会记录逐条 `token_usage` 以及累计输入/输出 token，方便比较 API、本地模型和不同 Prompt 的成本与延迟。
+
 当前 Qwen3-0.6B Q4_K_M 在本开发机的 33 条完整基线为：工具 exact match 72.7%、正常参数 exact match 94.7%、4 次 critical false-call，p50/p95 约 1.85/1.96 秒。它足以验证本地闭环，但尚未达到发布门槛；否定句、无关请求和危险路径必须继续由确定性安全层阻断。
 
 用例格式：
@@ -153,6 +165,8 @@ dox eval --api --cases ./my-cases.jsonl
 - 系统级：macOS/Linux `/etc/doxconfig`；Windows `%PROGRAMDATA%\dox\config`
 - 全局：macOS/Linux `~/.doxconfig`；Windows `%USERPROFILE%\.doxconfig`
 - 当前目录：`./.dox/config`
+
+在 macOS/Linux 上，`dox config --global ...` 写入 `~/.doxconfig`；Windows 写入 `%USERPROFILE%\.doxconfig`。如果从未执行过全局配置命令，文件可能尚不存在，此时使用内置默认值。项目级配置写入当前目录的 `.dox/config`。
 
 ```bash
 dox config --list
