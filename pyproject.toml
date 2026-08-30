@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dox-cli"
+version = "0.2.0"
+description = "A local-first natural-language command router"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name = "dox contributors"}]
+dependencies = []
+
+[project.optional-dependencies]
+local = ["llama-cpp-python>=0.3.16,<0.4"]
+dev = ["pytest>=8,<9"]
+
+[project.scripts]
+dox = "dox.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["dox*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
