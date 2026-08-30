@@ -112,9 +112,10 @@ PoC 采用 Python sidecar，因为它能最快回答“模型对 dox 请求是�
 | 候选 | 规模/定位 | 结构化工具调用 | CPU 与分发 | 中文风险 | dox 建议 |
 |---|---|---|---|---|---|
 | Needle 2 | 45M，专门工具调用/抽取 | 原生 Grammar、检索、confidence | 约 14MB 引擎、约 38–45MB 实测 | 中文高置信误调用 | 排除 base；保留专项微调支线 |
-| Qwen3 0.6B | 多语言通用小模型 | 原生 Qwen tool-call 模板，关闭 thinking | MLX 4-bit 335MB；需补 GGUF CPU 测试 | 共享用例中最好 | 当前首选 PoC |
+| Qwen3 0.6B | 多语言通用小模型 | 原生 Qwen tool-call 模板，关闭 thinking | MLX 4-bit 335MB；GGUF Q4_K_M 378MiB | 共享用例中最好 | 当前首选 PoC，但 CPU 路径慢 |
 | LFM2.5 1.2B Instruct | 明确支持中英和 function calling | Pythonic tool call/JSON | Q4_K_M 697MiB；CPU p50 2.6s | 多工具混淆严重 | 当前排除默认候选 |
 | FunctionGemma 270M | 专门函数调用的可微调底座 | 自有 function call token/template | 4-bit 约 151MB MLX / 241MiB GGUF | base 中文未证明 | 值得做 dox 专项微调，不用 base 直出 |
+| Hammer2.0 0.5B | Qwen2.5-0.5B 函数调用微调 | 作者自定义 JSON 提示 | Q4_K_M 379MiB；CPU p50 1.1s | 中文参数不稳 | 微调路线对照，不作默认 |
 | Granite 3.2 2B | Apache-2.0，多语言、function calling | 模板/Grammar | 约 2B，明显更重 | 明确支持中文 | 质量 fallback，尚未实测 |
 | xLAM 1B | 专门函数调用 | 函数调用训练 | 约 1B | 中文未证明 | 仓库访问/许可确认后再测 |
 
@@ -128,11 +129,17 @@ FunctionGemma 官方明确说明 270M base 旨在针对具体函数调用任务�
 |---|---:|---:|---:|---:|---:|
 | Needle 2 base / 原生 CPU engine | 约 14MB | 57.6% | 26.3% | 2 | 304 / 366ms |
 | Qwen3-0.6B 4-bit / MLX | 335MB | **87.9%** | **94.7%** | 2 | **782 / 890ms** |
+| Qwen3-0.6B Q4_K_M / llama.cpp CPU | 378MiB | 66.7% | 89.5% | 5 | 2615 / 3122ms |
 | LFM2.5-1.2B Q4_K_M / llama.cpp CPU | 697MiB | 39.4% | 52.6% | 2 | 2609 / 3203ms |
+| Hammer2.0-0.5B Q4_K_M / llama.cpp CPU | 379MiB | 69.7% | 47.4% | 4 | 1062 / 1279ms |
 
 Qwen 的 2 个 critical case 都是根目录/当前目录删除请求产生 `remove_path` 调用；这类路径可以且必须由确定性安全层拒绝。Qwen 还会在少数缺参请求中自行补 `.` 或 `backup`，因此模型返回后仍要做参数证据校验和追问，不能直接执行。
 
+同一 Qwen 权重在 MLX 与 GGUF/llama.cpp 的分数差异很大，原因不只可能是量化，还包括 chat-template、采样、parser 和 backend 版本。GGUF 的 `/no_think` 必须放在 user turn；即使如此，纯 CPU p50 仍约 2.6 秒、进程最大 RSS 探针约 758MiB，暂时不符合 dox 的“即时命令路由”体验。生产选择不能只写“用 Qwen”，必须锁定权重、量化、模板、runtime 和输出约束的完整组合。
+
 LFM 的低分不意味着模型完全没有中文能力。单个解压工具配合中文提示可正确调用；问题出现在多工具路由时，它频繁把 copy、Git、find、install 错选为 `extract_archive`，且输出格式在 Pythonic call、JSON 和自然语言之间漂移。它在本任务上更慢、更大、受许可证限制，当前没有继续优化为默认模型的价值。
+
+Hammer2.0-0.5B 使用作者公开的 tool/format 分段提示，CPU 速度比 Qwen3 GGUF 快，但中文工具/参数质量和否定请求拒绝仍不合格。其 CC-BY-4.0 可商用但要求署名；Hammer2.1 虽更新，但许可证是 CC-BY-NC-4.0，直接排除为商业默认候选。
 
 ## 4. 推荐的 Provider 形态
 
@@ -194,7 +201,7 @@ dox-model-needle    可选的实验/专项微调 runner
 
 ## 6. 当前结论
 
-本轮已经回答了最关键的问题：Needle 2 base 不支持达到 dox 要求的中文路由，且 confidence 不能防止高置信错误；LFM2.5-1.2B 在该任务上不比更小的 Qwen 更好。Qwen3-0.6B 4-bit 是当前最有希望的平衡点，335MB 包体和亚秒 MLX 热延迟可接受，但 33 条小用例的 87.9% 工具准确率仍不足以上线。
+本轮已经回答了最关键的问题：Needle 2 base 不支持达到 dox 要求的中文路由，且 confidence 不能防止高置信错误；LFM2.5-1.2B 和 Hammer2.0-0.5B 在该任务上不比 Qwen3 MLX 更好。Qwen3-0.6B 4-bit 的 MLX 组合是当前最有希望的平衡点，335MB 包体和亚秒热延迟可接受，但 33 条小用例的 87.9% 工具准确率仍不足以上线；其通用 llama.cpp CPU 路径目前约 2.6 秒，也不够快。因此暂不确认某个模型为产品默认，只确认“Qwen3 领域微调 + 约束输出”是优先实验路线。
 
 下一阶段不应把某个模型匆忙接入主 CLI，而是：
 
@@ -213,4 +220,5 @@ dox-model-needle    可选的实验/专项微调 runner
 - Qwen3-0.6B 模型卡：Apache-2.0、100+ 语言、tool calling、可关闭 thinking；2026-08-30 读取并实测
 - LFM2.5-1.2B-Instruct 模型卡及 LFM Open License v1.0；2026-08-30 读取并实测
 - FunctionGemma 270M 模型卡：官方明确要求面向具体任务微调；Gemma license；2026-08-30 读取，base 仅做探针，未列入统一分数
+- Hammer2.0-0.5B 模型卡：Qwen2.5-0.5B + APIGen/xLAM 数据，CC-BY-4.0；2026-08-30 读取并实测。Hammer2.1 因 CC-BY-NC-4.0 不列为默认候选
 - 复现脚本与原始结果：`experiments/`
