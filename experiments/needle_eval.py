@@ -63,6 +63,10 @@ def main():
 
     rows = []
     for case in cases:
+        # Each dox invocation is an independent request. Needle keeps a sliding
+        # session internally, so reset it to prevent earlier benchmark text from
+        # contaminating tool selection and extracted arguments.
+        agent.reset()
         start = time.perf_counter()
         response = agent.complete(case["request"], max_new_tokens=args.max_new_tokens)
         elapsed_ms = (time.perf_counter() - start) * 1000

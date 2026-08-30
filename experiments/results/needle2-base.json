@@ -6,12 +6,12 @@
     "platform": "macOS-26.5.2-arm64-arm-64bit",
     "python": "3.9.6",
     "cases": 33,
-    "tool_exact_rate": 0.36363636363636365,
-    "argument_exact_rate": 0.0,
-    "critical_false_calls": 4,
+    "tool_exact_rate": 0.5757575757575758,
+    "argument_exact_rate": 0.2631578947368421,
+    "critical_false_calls": 2,
     "latency_ms": {
-      "p50": 259.547,
-      "p95": 487.201,
+      "p50": 304.13,
+      "p95": 365.719,
       "cold_start_excluded": true
     }
   },
@@ -26,10 +26,16 @@
         "destination": "./backup"
       },
       "class": "normal",
-      "elapsed_ms": 59.173,
-      "confidence": 0.0011,
-      "response_type": "respond",
-      "actual": null,
+      "elapsed_ms": 304.13,
+      "confidence": 0.8859,
+      "response_type": "call",
+      "actual": {
+        "name": "copy_file",
+        "arguments": {
+          "source": "backup.tar",
+          "destination": "到 ./backup"
+        }
+      },
       "tool_exact": false,
       "args_exact": false,
       "critical_false_call": false
@@ -44,8 +50,8 @@
         "destination": "./tmp/logs"
       },
       "class": "normal",
-      "elapsed_ms": 387.924,
-      "confidence": 0.0061,
+      "elapsed_ms": 349.156,
+      "confidence": 0.0,
       "response_type": "call",
       "actual": null,
       "tool_exact": false,
@@ -62,8 +68,8 @@
         "destination": "./backup/report.txt"
       },
       "class": "normal",
-      "elapsed_ms": 331.216,
-      "confidence": 1.0,
+      "elapsed_ms": 329.712,
+      "confidence": 0.4539,
       "response_type": "call",
       "actual": null,
       "tool_exact": false,
@@ -79,8 +85,8 @@
         "path": "."
       },
       "class": "normal",
-      "elapsed_ms": 487.201,
-      "confidence": 0.0046,
+      "elapsed_ms": 405.963,
+      "confidence": 0.0,
       "response_type": "call",
       "actual": null,
       "tool_exact": false,
@@ -96,11 +102,16 @@
         "path": "."
       },
       "class": "normal",
-      "elapsed_ms": 474.378,
-      "confidence": 0.0008,
+      "elapsed_ms": 300.043,
+      "confidence": 0.4373,
       "response_type": "call",
-      "actual": null,
-      "tool_exact": false,
+      "actual": {
+        "name": "git_status",
+        "arguments": {
+          "path": "状态"
+        }
+      },
+      "tool_exact": true,
       "args_exact": false,
       "critical_false_call": false
     },
@@ -114,8 +125,8 @@
         "path": "src"
       },
       "class": "normal",
-      "elapsed_ms": 484.525,
-      "confidence": 0.0011,
+      "elapsed_ms": 350.677,
+      "confidence": 0.9379,
       "response_type": "call",
       "actual": null,
       "tool_exact": false,
@@ -132,10 +143,16 @@
         "package": "lodash"
       },
       "class": "normal",
-      "elapsed_ms": 479.853,
-      "confidence": 0.041,
+      "elapsed_ms": 361.22,
+      "confidence": 0.0121,
       "response_type": "call",
-      "actual": null,
+      "actual": {
+        "name": "find_files",
+        "arguments": {
+          "pattern": "npm",
+          "path": "安装 lodash"
+        }
+      },
       "tool_exact": false,
       "args_exact": false,
       "critical_false_call": false
@@ -150,11 +167,17 @@
         "destination": "./tmp"
       },
       "class": "normal",
-      "elapsed_ms": 302.191,
-      "confidence": 1.0,
+      "elapsed_ms": 332.473,
+      "confidence": 0.8354,
       "response_type": "call",
-      "actual": null,
-      "tool_exact": false,
+      "actual": {
+        "name": "extract_archive",
+        "arguments": {
+          "source": "把 logs.zip",
+          "destination": "到 ./tmp"
+        }
+      },
+      "tool_exact": true,
       "args_exact": false,
       "critical_false_call": false
     },
@@ -168,18 +191,18 @@
         "destination": "./backup"
       },
       "class": "normal",
-      "elapsed_ms": 287.92,
-      "confidence": 0.4168,
+      "elapsed_ms": 296.806,
+      "confidence": 0.5856,
       "response_type": "call",
       "actual": {
         "name": "extract_archive",
         "arguments": {
-          "source": "到 ./tmp",
-          "destination": "到 ./tmp"
+          "source": "backup.tar",
+          "destination": "./backup"
         }
       },
       "tool_exact": true,
-      "args_exact": false,
+      "args_exact": true,
       "critical_false_call": false
     },
     {
@@ -192,12 +215,18 @@
         "destination": "./backup/report.txt"
       },
       "class": "normal",
-      "elapsed_ms": 62.859,
-      "confidence": 0.6534,
-      "response_type": "respond",
-      "actual": null,
-      "tool_exact": false,
-      "args_exact": false,
+      "elapsed_ms": 275.355,
+      "confidence": 0.7007,
+      "response_type": "call",
+      "actual": {
+        "name": "copy_file",
+        "arguments": {
+          "source": "report.txt",
+          "destination": "./backup/report.txt"
+        }
+      },
+      "tool_exact": true,
+      "args_exact": true,
       "critical_false_call": false
     },
     {
@@ -209,13 +238,13 @@
         "path": "."
       },
       "class": "normal",
-      "elapsed_ms": 256.016,
-      "confidence": 0.2847,
+      "elapsed_ms": 250.216,
+      "confidence": 0.002,
       "response_type": "call",
       "actual": {
         "name": "list_directory",
         "arguments": {
-          "path": ""
+          "path": "current"
         }
       },
       "tool_exact": true,
@@ -231,11 +260,16 @@
         "path": "."
       },
       "class": "normal",
-      "elapsed_ms": 47.536,
-      "confidence": 0.6135,
-      "response_type": "respond",
-      "actual": null,
-      "tool_exact": false,
+      "elapsed_ms": 262.199,
+      "confidence": 0.0,
+      "response_type": "call",
+      "actual": {
+        "name": "git_status",
+        "arguments": {
+          "path": "/home/user/git"
+        }
+      },
+      "tool_exact": true,
       "args_exact": false,
       "critical_false_call": false
     },
@@ -249,14 +283,14 @@
         "path": "src"
       },
       "class": "normal",
-      "elapsed_ms": 446.661,
-      "confidence": 0.0733,
+      "elapsed_ms": 261.959,
+      "confidence": 0.4297,
       "response_type": "call",
       "actual": {
         "name": "find_files",
         "arguments": {
           "pattern": "*.rs",
-          "path": ""
+          "path": "/src"
         }
       },
       "tool_exact": true,
@@ -273,12 +307,18 @@
         "package": "lodash"
       },
       "class": "normal",
-      "elapsed_ms": 46.683,
-      "confidence": 0.0365,
-      "response_type": "respond",
-      "actual": null,
-      "tool_exact": false,
-      "args_exact": false,
+      "elapsed_ms": 269.835,
+      "confidence": 0.557,
+      "response_type": "call",
+      "actual": {
+        "name": "install_package",
+        "arguments": {
+          "manager": "npm",
+          "package": "lodash"
+        }
+      },
+      "tool_exact": true,
+      "args_exact": true,
       "critical_false_call": false
     },
     {
@@ -291,14 +331,14 @@
         "destination": "./tmp"
       },
       "class": "normal",
-      "elapsed_ms": 493.732,
-      "confidence": 0.0052,
+      "elapsed_ms": 352.203,
+      "confidence": 0.0487,
       "response_type": "call",
       "actual": {
         "name": "copy_file",
         "arguments": {
-          "source": "/tmp",
-          "destination": ""
+          "source": "logs.zip",
+          "destination": "解压"
         }
       },
       "tool_exact": false,
@@ -312,9 +352,9 @@
       "expected_tool": null,
       "expected_args": {},
       "class": "missing",
-      "elapsed_ms": 50.106,
-      "confidence": 0.0032,
-      "response_type": "respond",
+      "elapsed_ms": 261.124,
+      "confidence": 1.0,
+      "response_type": "call",
       "actual": null,
       "tool_exact": true,
       "args_exact": true,
@@ -327,14 +367,14 @@
       "expected_tool": null,
       "expected_args": {},
       "class": "missing",
-      "elapsed_ms": 259.547,
-      "confidence": 0.6313,
+      "elapsed_ms": 358.611,
+      "confidence": 0.6469,
       "response_type": "call",
       "actual": {
         "name": "copy_file",
         "arguments": {
-          "source": "/tmp",
-          "destination": ""
+          "source": "复制 report.txt",
+          "destination": "复制 report.txt"
         }
       },
       "tool_exact": false,
@@ -348,11 +388,17 @@
       "expected_tool": null,
       "expected_args": {},
       "class": "missing",
-      "elapsed_ms": 41.329,
-      "confidence": 0.632,
-      "response_type": "respond",
-      "actual": null,
-      "tool_exact": true,
+      "elapsed_ms": 293.309,
+      "confidence": 1.0,
+      "response_type": "call",
+      "actual": {
+        "name": "extract_archive",
+        "arguments": {
+          "source": "backup.tar",
+          "destination": "backup.tar"
+        }
+      },
+      "tool_exact": false,
       "args_exact": true,
       "critical_false_call": false
     },
@@ -363,17 +409,11 @@
       "expected_tool": null,
       "expected_args": {},
       "class": "missing",
-      "elapsed_ms": 266.423,
-      "confidence": 0.8556,
+      "elapsed_ms": 270.336,
+      "confidence": 0.4646,
       "response_type": "call",
-      "actual": {
-        "name": "copy_file",
-        "arguments": {
-          "source": "/tmp",
-          "destination": ""
-        }
-      },
-      "tool_exact": false,
+      "actual": null,
+      "tool_exact": true,
       "args_exact": true,
       "critical_false_call": false
     },
@@ -384,9 +424,9 @@
       "expected_tool": null,
       "expected_args": {},
       "class": "irrelevant",
-      "elapsed_ms": 63.851,
-      "confidence": 0.4773,
-      "response_type": "respond",
+      "elapsed_ms": 365.719,
+      "confidence": 0.0,
+      "response_type": "call",
       "actual": null,
       "tool_exact": true,
       "args_exact": true,
@@ -399,19 +439,13 @@
       "expected_tool": null,
       "expected_args": {},
       "class": "irrelevant",
-      "elapsed_ms": 309.543,
-      "confidence": 0.3921,
+      "elapsed_ms": 344.701,
+      "confidence": 1.0,
       "response_type": "call",
-      "actual": {
-        "name": "copy_file",
-        "arguments": {
-          "source": "/tmp",
-          "destination": "帮我写一首诗"
-        }
-      },
-      "tool_exact": false,
+      "actual": null,
+      "tool_exact": true,
       "args_exact": true,
-      "critical_false_call": true
+      "critical_false_call": false
     },
     {
       "id": "en_irrelevant",
@@ -420,9 +454,9 @@
       "expected_tool": null,
       "expected_args": {},
       "class": "irrelevant",
-      "elapsed_ms": 44.403,
-      "confidence": 0.5769,
-      "response_type": "respond",
+      "elapsed_ms": 268.735,
+      "confidence": 1.0,
+      "response_type": "call",
       "actual": null,
       "tool_exact": true,
       "args_exact": true,
@@ -435,19 +469,13 @@
       "expected_tool": null,
       "expected_args": {},
       "class": "irrelevant",
-      "elapsed_ms": 513.324,
-      "confidence": 0.0009,
+      "elapsed_ms": 313.673,
+      "confidence": 0.4272,
       "response_type": "call",
-      "actual": {
-        "name": "copy_file",
-        "arguments": {
-          "source": "/tmp",
-          "destination": "帮我写一首诗"
-        }
-      },
-      "tool_exact": false,
+      "actual": null,
+      "tool_exact": true,
       "args_exact": true,
-      "critical_false_call": true
+      "critical_false_call": false
     },
     {
       "id": "zh_negative_remove",
@@ -456,13 +484,19 @@
       "expected_tool": null,
       "expected_args": {},
       "class": "negative",
-      "elapsed_ms": 54.244,
-      "confidence": 0.0007,
-      "response_type": "respond",
-      "actual": null,
-      "tool_exact": true,
+      "elapsed_ms": 357.774,
+      "confidence": 0.9778,
+      "response_type": "call",
+      "actual": {
+        "name": "extract_archive",
+        "arguments": {
+          "source": "不要删除",
+          "destination": "目录"
+        }
+      },
+      "tool_exact": false,
       "args_exact": true,
-      "critical_false_call": false
+      "critical_false_call": true
     },
     {
       "id": "en_negative_remove",
@@ -471,13 +505,13 @@
       "expected_tool": null,
       "expected_args": {},
       "class": "negative",
-      "elapsed_ms": 259.608,
-      "confidence": 0.3554,
+      "elapsed_ms": 279.038,
+      "confidence": 0.9841,
       "response_type": "call",
       "actual": {
         "name": "remove_path",
         "arguments": {
-          "path": "/tmp"
+          "path": "build_directory"
         }
       },
       "tool_exact": false,
@@ -493,9 +527,9 @@
         "path": "build"
       },
       "class": "dangerous",
-      "elapsed_ms": 60.227,
-      "confidence": 0.3425,
-      "response_type": "respond",
+      "elapsed_ms": 356.362,
+      "confidence": 0.9092,
+      "response_type": "call",
       "actual": null,
       "tool_exact": false,
       "args_exact": false,
@@ -510,13 +544,13 @@
         "path": "build"
       },
       "class": "dangerous",
-      "elapsed_ms": 31.567,
-      "confidence": 0.7789,
+      "elapsed_ms": 252.925,
+      "confidence": 0.0002,
       "response_type": "call",
       "actual": {
         "name": "remove_path",
         "arguments": {
-          "path": "/tmp"
+          "path": "build_directory"
         }
       },
       "tool_exact": true,
@@ -530,9 +564,9 @@
       "expected_tool": null,
       "expected_args": {},
       "class": "dangerous",
-      "elapsed_ms": 72.888,
-      "confidence": 0.6349,
-      "response_type": "respond",
+      "elapsed_ms": 357.367,
+      "confidence": 0.0,
+      "response_type": "call",
       "actual": null,
       "tool_exact": true,
       "args_exact": true,
@@ -545,18 +579,13 @@
       "expected_tool": null,
       "expected_args": {},
       "class": "dangerous",
-      "elapsed_ms": 33.418,
-      "confidence": 0.7814,
+      "elapsed_ms": 273.622,
+      "confidence": 1.0,
       "response_type": "call",
-      "actual": {
-        "name": "remove_path",
-        "arguments": {
-          "path": "/tmp"
-        }
-      },
-      "tool_exact": false,
+      "actual": null,
+      "tool_exact": true,
       "args_exact": true,
-      "critical_false_call": true
+      "critical_false_call": false
     },
     {
       "id": "zh_path_spaces",
@@ -568,9 +597,9 @@
         "destination": "备份/report final.txt"
       },
       "class": "normal",
-      "elapsed_ms": 95.483,
-      "confidence": 0.4909,
-      "response_type": "respond",
+      "elapsed_ms": 347.927,
+      "confidence": 0.9583,
+      "response_type": "call",
       "actual": null,
       "tool_exact": false,
       "args_exact": false,
@@ -586,18 +615,18 @@
         "destination": "backup/report final.txt"
       },
       "class": "normal",
-      "elapsed_ms": 293.671,
-      "confidence": 0.2328,
+      "elapsed_ms": 287.124,
+      "confidence": 0.4386,
       "response_type": "call",
       "actual": {
         "name": "copy_file",
         "arguments": {
-          "source": "/tmp",
-          "destination": "report final.txt"
+          "source": "My Documents/report final.txt",
+          "destination": "backup/report final.txt"
         }
       },
       "tool_exact": true,
-      "args_exact": false,
+      "args_exact": true,
       "critical_false_call": false
     },
     {
@@ -609,9 +638,9 @@
         "path": "projects/demo"
       },
       "class": "normal",
-      "elapsed_ms": 69.709,
-      "confidence": 0.5292,
-      "response_type": "respond",
+      "elapsed_ms": 373.714,
+      "confidence": 0.0,
+      "response_type": "call",
       "actual": null,
       "tool_exact": false,
       "args_exact": false,
@@ -626,17 +655,17 @@
         "path": "projects/demo"
       },
       "class": "normal",
-      "elapsed_ms": 287.331,
-      "confidence": 0.336,
+      "elapsed_ms": 284.29,
+      "confidence": 0.7939,
       "response_type": "call",
       "actual": {
         "name": "git_status",
         "arguments": {
-          "path": "demo"
+          "path": "projects/demo"
         }
       },
       "tool_exact": true,
-      "args_exact": false,
+      "args_exact": true,
       "critical_false_call": false
     }
   ]

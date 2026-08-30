@@ -16,6 +16,8 @@ NEEDLE_TELEMETRY=0 .venv/bin/python experiments/needle_eval.py \
 
 `experiments/models/` 被 `.gitignore` 忽略；结果 JSON 可以提交，用于比较不同机器和模型版本。没有 Hugging Face 镜像时，将 `HF_ENDPOINT` 去掉即可使用官方地址；核心运行阶段不联网。
 
+脚本在每条 case 前调用 `agent.reset()`，因为每次 dox CLI 请求应是独立会话；否则 Needle 的 256-token 滑动窗口会让前一个测试污染后一个测试，尤其会复用旧路径参数。
+
 Needle Python API 的 `weights=` 参数是 LoRA/微调权重，会关闭未校准的 confidence head；评估官方 base model 时应省略 `--checkpoint`。下载的 `needle2.cact` 只用于微调或部署归档，不作为本报告的 base 结果。
 
 ## Qwen3 / LFM2.5
