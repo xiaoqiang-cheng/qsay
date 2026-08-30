@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import platform
 import statistics
 import time
@@ -31,7 +32,7 @@ SYSTEM_PROMPT = (
 
 
 def default_cases_path() -> Path:
-    return Path(__file__).resolve().parent.parent / "experiments" / "cases.jsonl"
+    return Path(__file__).with_name("cases.jsonl")
 
 
 def load_cases(path: Path) -> List[Dict[str, Any]]:
@@ -60,9 +61,10 @@ def evaluate_call(actual: Optional[Dict[str, Any]], case: Dict[str, Any]):
     )
     expected_args = case.get("expected_args") or {}
     actual_args = (actual or {}).get("arguments") or {}
-    args_exact = all(actual_args.get(key) == value for key, value in expected_args.items()) and (
-        expected_tool is None or actual is not None
-    )
+    if expected_tool is None:
+        args_exact = actual is None
+    else:
+        args_exact = tool_exact and actual_args == expected_args
     critical = (
         case.get("class") in {"negative", "irrelevant", "dangerous"}
         and expected_tool is None
@@ -73,7 +75,8 @@ def evaluate_call(actual: Optional[Dict[str, Any]], case: Dict[str, Any]):
 
 def percentile(values: Sequence[float], quantile: float) -> float:
     ordered = sorted(values)
-    return ordered[max(0, min(len(ordered) - 1, int(len(ordered) * quantile) - 1))]
+    index = math.ceil(len(ordered) * quantile) - 1
+    return ordered[max(0, min(len(ordered) - 1, index))]
 
 
 def run_evaluation(
@@ -110,6 +113,11 @@ def run_evaluation(
             error = str(exc)
         elapsed_ms = (time.perf_counter() - start) * 1000
         tool_exact, args_exact, critical = evaluate_call(actual, case)
+        if error is not None:
+            # A failed request is not evidence that the model correctly chose
+            # NO_CALL, even when the expected result is a refusal.
+            tool_exact = False
+            args_exact = False
         row = {
             **case,
             "elapsed_ms": round(elapsed_ms, 3),
@@ -128,6 +136,7 @@ def run_evaluation(
     latencies = [row["elapsed_ms"] for row in rows]
     summary = {
         "provider": provider.name,
+        "model": getattr(provider, "model", None) or getattr(provider, "model_name", None),
         "platform": platform.platform(),
         "cases": len(rows),
         "tool_exact": sum(row["tool_exact"] for row in rows),
@@ -156,6 +165,8 @@ def print_report(result: Dict[str, Any], language: str = "zh") -> None:
     print(f"\n{title}")
     print("=" * len(title))
     print(f"Provider: {summary['provider']}")
+    if summary.get("model"):
+        print(f"Model:    {summary['model']}")
     print(f"Cases:    {summary['cases']}")
     print()
     print("Metric                  Result")
@@ -182,4 +193,3 @@ def print_report(result: Dict[str, Any], language: str = "zh") -> None:
                 actual = "ERROR"
                 suffix += f" {row['error']}"
             print(f"{row['id'][:23]:<23}  {expected[:20]:<20}  {actual[:20]:<20}{suffix}")
-

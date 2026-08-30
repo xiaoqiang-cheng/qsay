@@ -202,6 +202,8 @@ def evaluate_command(argv: Sequence[str]) -> int:
     print_report(result, language)
     if args.output:
         print(f"\nJSON: {args.output}")
+    if result["summary"]["errors"] == result["summary"]["cases"]:
+        return 2
     return 0 if result["summary"]["critical_false_calls"] == 0 else 1
 
 

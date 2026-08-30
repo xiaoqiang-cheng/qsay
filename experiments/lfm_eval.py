@@ -41,7 +41,7 @@ def parse_call(text):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", type=Path, required=True)
-    ap.add_argument("--cases", type=Path, default=Path(__file__).with_name("cases.jsonl"))
+    ap.add_argument("--cases", type=Path, default=Path(__file__).parent.parent / "dox" / "cases.jsonl")
     ap.add_argument("--output", type=Path)
     ap.add_argument("--max-new-tokens", type=int, default=64)
     ap.add_argument("--threads", type=int, default=8)

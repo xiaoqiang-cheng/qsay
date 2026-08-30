@@ -1,6 +1,6 @@
 # 本地模型路由评测
 
-评测只测“工具选择 + 参数提取”，不会执行模型输出的命令。所有候选模型使用同一份 `cases.jsonl` 和等价的工具 Schema。
+评测只测“工具选择 + 参数提取”，不会执行模型输出的命令。所有候选模型使用同一份 [`dox/cases.jsonl`](../dox/cases.jsonl) 和等价的工具 Schema；该用例集也会随 Python 包发布，供 `dox eval` 默认使用。
 
 ## Needle 2
 

@@ -22,6 +22,9 @@ dox = "dox.cli:main"
 [tool.setuptools.packages.find]
 include = ["dox*"]
 
+[tool.setuptools.package-data]
+dox = ["cases.jsonl"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

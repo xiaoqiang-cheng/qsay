@@ -2,7 +2,7 @@
 
 状态：Research v0.2
 日期：2026-08-30
-结论：Needle 2 base 已被实测排除为中文默认模型；当前 PoC 首选 Qwen3-0.6B 4-bit，但它仍未达到安全上线门槛。Python 可以用于模型 runner，核心选择不再受 Rust FFI 限制。
+结论：Needle 2 base 已被实测排除为中文默认模型。产品默认已选择 Qwen3-0.6B；跨平台基线是 GGUF + llama.cpp，Apple Silicon 可选 MLX，但当前权重和提示仍未达到安全上线门槛。
 
 ## 1. 任务与评估标准
 
@@ -21,7 +21,7 @@ dox 的本地模型不是聊天模型，也不是需要长上下文的 coding ag
 - 纯 CPU 可运行，常驻内存和冷启动都可接受
 - 支持中文、英文和中英混合技术表达
 - 可以在 macOS、Linux、Windows PowerShell 目标上分发
-- 不要求用户安装 Python、Node.js 或联网下载模型才能启动核心 CLI
+- Python 3.9+ 可安装；模型下载完成后运行不依赖网络
 
 ## 2. Needle 2
 
@@ -97,15 +97,15 @@ Needle 2 是 Cactus Compute 发布的 45M 参数工具调用、设备控制和�
 
 因此 Needle 2 base **不能成为 dox 的中文默认模型，也不能单独承担拒绝和安全决策**。它的速度、尺寸和 Grammar 仍然有价值，后续只保留“用 dox 中英数据专门微调/LoRA”的研究支线，而且必须与 Qwen 路线按相同用例复测。
 
-### 2.4 工程接入候选
+### 2.4 工程接入结论
 
-按复杂度从低到高：
+核心已经切换到 Python，因此不再考虑 Rust FFI。MVP 的本地后端分为三种：
 
-1. **sidecar runner（推荐 PoC）：** `dox` 启动可选的 `dox-model`，通过 stdin/stdout 传递 NDJSON；模型进程崩溃不拖垮 CLI，Rust 核心不需要绑定 C ABI。缺点是多一个文件和进程。
-2. **Rust FFI：** 将 Needle 的平台动态库或静态库作为可选模型包加载，直接调用 `needle_init`、`needle_complete` 等 C API。延迟和用户体验最好，但需要维护跨平台 ABI、模型包版本和许可证。
-3. **Python sidecar：** 现在可接受。用户明确允许 Python，只要交互足够快。Python 不应强制成为核心 CLI 依赖，可使用 `uv`/独立环境或打包后的可选 runner；模型进程常驻以避免每次加载。
+1. `llama-cpp`：进程内加载 GGUF，作为 macOS、Linux、Windows 的共同默认路径。
+2. `mlx`：Apple Silicon 的显式加速选项。
+3. `server`：连接本机 OpenAI-compatible 常驻服务，避免每次 CLI 调用重新加载模型。
 
-PoC 采用 Python sidecar，因为它能最快回答“模型对 dox 请求是否足够好”，而不会先陷入跨平台链接问题。生产分发优先 llama.cpp/GGUF；Apple MLX 只用于快速实验和 macOS 性能对照。
+暂不自研 daemon。只有冷启动和连续调用数据证明它值得额外的安装、进程生命周期和 Windows 服务管理成本时，才考虑 `doxd`。
 
 ## 3. 对比候选
 
@@ -130,12 +130,15 @@ FunctionGemma 官方明确说明 270M base 旨在针对具体函数调用任务�
 | Needle 2 base / 原生 CPU engine | 约 14MB | 57.6% | 26.3% | 2 | 304 / 366ms |
 | Qwen3-0.6B 4-bit / MLX | 335MB | **87.9%** | **94.7%** | 2 | **782 / 890ms** |
 | Qwen3-0.6B Q4_K_M / llama.cpp CPU | 378MiB | 66.7% | 89.5% | 5 | 2615 / 3122ms |
+| Qwen3-0.6B Q4_K_M / 当前 `dox eval` | 378MiB | 72.7% | 94.7% | 4 | 1849 / 1963ms |
 | LFM2.5-1.2B Q4_K_M / llama.cpp CPU | 697MiB | 39.4% | 52.6% | 2 | 2609 / 3203ms |
 | Hammer2.0-0.5B Q4_K_M / llama.cpp CPU | 379MiB | 69.7% | 47.4% | 4 | 1062 / 1279ms |
 
 Qwen 的 2 个 critical case 都是根目录/当前目录删除请求产生 `remove_path` 调用；这类路径可以且必须由确定性安全层拒绝。Qwen 还会在少数缺参请求中自行补 `.` 或 `backup`，因此模型返回后仍要做参数证据校验和追问，不能直接执行。
 
 同一 Qwen 权重在 MLX 与 GGUF/llama.cpp 的分数差异很大，原因不只可能是量化，还包括 chat-template、采样、parser 和 backend 版本。GGUF 的 `/no_think` 必须放在 user turn；即使如此，纯 CPU p50 仍约 2.6 秒、进程最大 RSS 探针约 758MiB，暂时不符合 dox 的“即时命令路由”体验。生产选择不能只写“用 Qwen”，必须锁定权重、量化、模板、runtime 和输出约束的完整组合。
+
+主 CLI 接入后的同一 33 条用例复测为 72.7% 工具 exact、94.7% 正常参数 exact、4 次 critical false-call，p50 约 1.85 秒。分数变化来自新版 runtime、提示和更严格的 exact 参数口径，不能与旧实验脚本当作完全相同实验。四个关键错误包括无关英文请求、中文/英文否定删除以及根目录删除，说明确定性拒绝层仍是上线前置条件。
 
 LFM 的低分不意味着模型完全没有中文能力。单个解压工具配合中文提示可正确调用；问题出现在多工具路由时，它频繁把 copy、Git、find、install 错选为 `extract_archive`，且输出格式在 Pythonic call、JSON 和自然语言之间漂移。它在本任务上更慢、更大、受许可证限制，当前没有继续优化为默认模型的价值。
 
@@ -156,15 +159,16 @@ Provider 的输出再经过：
 Schema 校验 → Adapter 渲染 → 依赖检查 → 风险扫描 → 用户确认
 ```
 
-模型部署建议采用可选包：
+当前部署形态：
 
 ```text
-dox                 核心 CLI，规则之外的安全与执行逻辑
-dox-model-qwen      默认候选，本地 4-bit runner
-dox-model-needle    可选的实验/专项微调 runner
+dox                         Python 核心 CLI
+dox[local]                  llama-cpp-python 进程内后端
+dox --backend mlx           Apple Silicon 可选后端
+dox --backend server        本机常驻服务后端
 ```
 
-基础 `dox` 不因未安装模型而无法启动；`dox model install needle2` 才下载或导入模型。离线机器可在联网机器下载后复制模型包，运行时不自动联网。
+基础 `dox` 不包含模型文件，也可以只连接 API。离线机器可在联网机器下载后复制 GGUF；运行时不自动联网。
 
 ## 5. 最小评测方案
 
@@ -201,7 +205,7 @@ dox-model-needle    可选的实验/专项微调 runner
 
 ## 6. 当前结论
 
-本轮已经回答了最关键的问题：Needle 2 base 不支持达到 dox 要求的中文路由，且 confidence 不能防止高置信错误；LFM2.5-1.2B 和 Hammer2.0-0.5B 在该任务上不比 Qwen3 MLX 更好。Qwen3-0.6B 4-bit 的 MLX 组合是当前最有希望的平衡点，335MB 包体和亚秒热延迟可接受，但 33 条小用例的 87.9% 工具准确率仍不足以上线；其通用 llama.cpp CPU 路径目前约 2.6 秒，也不够快。因此暂不确认某个模型为产品默认，只确认“Qwen3 领域微调 + 约束输出”是优先实验路线。
+本轮已经回答了最关键的问题：Needle 2 base 不支持达到 dox 要求的中文路由，且 confidence 不能防止高置信错误；LFM2.5-1.2B 和 Hammer2.0-0.5B 在该任务上不比 Qwen3 更好。产品现在默认使用 Qwen3-0.6B，但“默认”表示工程路线已确定，不表示质量已达发布门槛。MLX 组合仍是 Apple Silicon 上最有希望的性能选项，跨平台 GGUF 路线则必须继续改善拒绝准确率和冷启动体验。
 
 下一阶段不应把某个模型匆忙接入主 CLI，而是：
 
@@ -209,7 +213,7 @@ dox-model-needle    可选的实验/专项微调 runner
 2. 在 llama.cpp Qwen GGUF CPU 路径复测冷启动、p50/p95、RSS，验证 Windows/Linux 可交付性。
 3. 实现确定性参数证据校验和危险路径拦截，再复算端到端 critical false-call。
 4. 以同一训练集比较 Qwen3-0.6B LoRA 与 FunctionGemma-270M 专项微调；后者只有在显著缩小包体且质量不降时才值得采用。
-5. 只有达到决策门后，才把本地 Provider 设为默认；此前 API Provider 继续作为可靠路径。
+5. 在达到决策门前，将本地 Provider 明确标记为需要人工审查的 MVP；API Provider 作为可比较、可选的质量路径。
 
 ## 7. 资料与版本记录
 

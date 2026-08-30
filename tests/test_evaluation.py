@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from dox.evaluation import OPENAI_TOOLS, evaluate_call, print_report, run_evaluation
+from dox.evaluation import default_cases_path, evaluate_call, load_cases, percentile, run_evaluation
 from dox.providers import Provider
 
 
@@ -31,6 +31,30 @@ def test_evaluate_call_detects_critical_false_call():
     assert critical
 
 
+def test_evaluate_call_requires_exact_arguments():
+    case = {
+        "class": "normal",
+        "expected_tool": "copy_file",
+        "expected_args": {"source": "a", "destination": "b"},
+    }
+    actual = {
+        "name": "copy_file",
+        "arguments": {"source": "a", "destination": "b", "overwrite": True},
+    }
+    tool_ok, args_ok, critical = evaluate_call(actual, case)
+    assert tool_ok
+    assert not args_ok
+    assert not critical
+
+
+def test_percentile_uses_nearest_rank_for_small_samples():
+    assert percentile([1.0, 2.0, 3.0], 0.95) == 3.0
+
+
+def test_packaged_default_cases_are_available():
+    assert len(load_cases(default_cases_path())) == 33
+
+
 def test_run_evaluation_and_json_report(tmp_path: Path):
     cases = tmp_path / "cases.jsonl"
     cases.write_text(
@@ -45,3 +69,28 @@ def test_run_evaluation_and_json_report(tmp_path: Path):
     assert result["summary"]["tool_exact_rate"] == 1.0
     assert result["summary"]["critical_false_calls"] == 0
     assert json.loads(output.read_text())["summary"]["cases"] == 2
+
+
+class ErrorProvider(Provider):
+    name = "error"
+
+    def complete(self, messages, tools=None, max_tokens=256):
+        raise RuntimeError("request failed")
+
+
+def test_request_error_is_not_counted_as_correct_no_call(tmp_path: Path):
+    cases = tmp_path / "cases.jsonl"
+    cases.write_text(
+        json.dumps({
+            "id": "irrelevant",
+            "locale": "en",
+            "request": "write a poem",
+            "expected_tool": None,
+            "expected_args": {},
+            "class": "irrelevant",
+        }) + "\n",
+        encoding="utf-8",
+    )
+    result = run_evaluation(ErrorProvider(), cases)
+    assert result["summary"]["tool_exact"] == 0
+    assert result["summary"]["errors"] == 1

@@ -129,6 +129,8 @@ dox eval --api --cases ./my-cases.jsonl
 
 评估返回码：无 critical false-call 时 `0`，存在 critical false-call 时 `1`，配置或整体请求失败时 `2`。即使单条 API 请求失败，报告仍会继续生成并记录错误。
 
+当前 Qwen3-0.6B Q4_K_M 在本开发机的 33 条完整基线为：工具 exact match 72.7%、正常参数 exact match 94.7%、4 次 critical false-call，p50/p95 约 1.85/1.96 秒。它足以验证本地闭环，但尚未达到发布门槛；否定句、无关请求和危险路径必须继续由确定性安全层阻断。
+
 用例格式：
 
 ```json

@@ -221,6 +221,7 @@ class MLXProvider(Provider):
         path = model_path or config.local_model_path
         if not path:
             raise RuntimeError("MLX backend 需要配置 `local.model-path`")
+        self.model_name = config.local_model or DEFAULT_LOCAL_MODEL
         self._generate = generate
         self._sampler = make_sampler(0.0)
         self._model, self._tokenizer = load(path)
@@ -297,6 +298,10 @@ def extract_tool_call(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def download_default_model(destination: Optional[Path] = None, endpoint: Optional[str] = None) -> Path:
+    # Prefer Q4_K_M for the default footprint. The current Qwen organization
+    # publishes only Q8_0 GGUF, so this downloads a community conversion for
+    # development. Release artifacts must be converted from official weights
+    # and pinned by checksum; users can always supply that path explicitly.
     target = destination or default_model_path()
     target.parent.mkdir(parents=True, exist_ok=True)
     try:

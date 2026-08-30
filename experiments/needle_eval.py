@@ -46,7 +46,7 @@ def evaluate(response, case):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkpoint", type=Path, help="Optional .cact LoRA weights; omit for the confidence-calibrated Needle 2 base engine")
-    ap.add_argument("--cases", type=Path, default=Path(__file__).with_name("cases.jsonl"))
+    ap.add_argument("--cases", type=Path, default=Path(__file__).parent.parent / "dox" / "cases.jsonl")
     ap.add_argument("--output", type=Path)
     ap.add_argument("--max-new-tokens", type=int, default=96)
     ap.add_argument("--warmup", type=int, default=1)
