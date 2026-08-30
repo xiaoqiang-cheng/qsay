@@ -2,3 +2,8 @@
 .DS_Store
 .venv/
 experiments/models/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+/reports/

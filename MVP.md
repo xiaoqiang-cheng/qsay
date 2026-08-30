@@ -1,438 +1,311 @@
 # dox MVP 设计文档
 
-状态：Draft v0.1  
-日期：2026-08-30  
-产品名称：dox
+状态：Draft v0.2
 
-方向调整（2026-08-30）：P0 改为模型优先。dox 不再依赖关键词或固定规则识别用户意图，首先调用 OpenAI-compatible LLM 生成结构化命令计划；规则/Adapter 仅负责后续的平台适配、校验、风险控制和扩展，不作为主要自然语言理解方案。
+日期：2026-08-30
+
+产品名称：dox
 
 ## 1. 产品定义
 
-dox 是一个本地优先的自然语言命令路由器。用户用一句话描述想完成的终端任务，dox 将其解析为结构化意图，选择合适的工具和参数，生成当前平台可执行的命令，展示风险并等待用户确认。
-
-核心承诺：
-
-- 未来本地 Provider 可完全离线工作；P0 API 模式需要网络
-- 常见请求响应足够快，目标是在普通设备上也能在 1 秒内完成
-- 默认只展示和确认，不自动执行
-- 命令、假设、风险对用户透明
-- 新增命令主要通过适配器扩展，不依赖重新训练模型
-
-品牌名为 dox，实际命令也使用 `dox`。`do` 在 Bash、Zsh、PowerShell 中是保留字，不作为可执行文件名。
-
-### 1.1 不可妥协的设计原则
-
-1. 轻量：核心二进制小、启动快、运行时依赖少；模型通过可选 Provider 接入，不把模型运行时硬编码进核心 CLI。
-2. 易安装：优先发布单文件二进制和各平台原生包，不要求用户预装 Python、Node.js 或容器运行时。
-3. 离线优先：核心校验和命令执行不依赖网络；P0 的自然语言规划使用显式配置的 API LLM，未来本地模型 Provider 接入后提供完整离线规划。
-
-## 2. MVP 范围
-
-### 2.1 目标用户
-
-- 经常使用终端、但不熟悉全部参数的开发者
-- 需要快速查命令的初中级用户
-- 受网络、隐私或企业环境限制的用户
-
-### 2.2 目标平台与 Shell
-
-首版支持：
-
-- macOS：Zsh、Bash
-- Linux：Bash、Zsh
-- Windows：PowerShell（首版优先保证 PowerShell 7+，再验证 Windows PowerShell 5.1）
-
-Windows `cmd.exe` 不在支持范围内。用户使用 `cmd.exe` 时，dox 可以提示切换到 PowerShell，但不承诺生成或执行 `cmd.exe` 语法。
-
-### 2.3 明确不做的事
-
-- 不承担代码库理解、长上下文规划和多轮编程任务
-- 不默认读取项目文件、网络内容或终端历史
-- 不让模型直接获得任意 Shell 执行权限
-- 不追求首版覆盖所有命令
-- 不绑定任何特定云厂商；P0 的 API Provider 由用户显式配置
-
-## 3. 用户体验
-
-### 3.1 基本调用
+dox 是一个轻量、本地优先的自然语言命令路由器。用户用一句中文或英文描述终端任务，模型负责理解意图和提取参数；确定性代码负责结构校验、平台适配、风险升级、确认和执行。
 
 ```text
-dox "解压 xxx.tar 到 xxx 文件夹"
+dox "解压 backup.tar 到 ./backup"
 ```
 
-也允许将未加引号的参数拼接为空格分隔的自然语言，但文档和示例优先使用引号。
+首版支持 macOS、Linux 和 Windows。Windows 仅支持 PowerShell，不支持 `cmd.exe`。命令名使用 `dox`；`do` 在常见 Shell 中存在语法冲突，不作为可执行文件名。
 
-### 3.2 默认输出
+## 2. 不可妥协的原则
+
+1. 轻量：核心使用 Python 标准库，模型运行时和 API 能力按需安装或配置。
+2. 易安装：目标是一次包管理器命令完成安装，不要求 Node.js、容器或常驻服务。
+3. 离线优先：默认使用本地 Qwen3-0.6B，下载模型后可以完全断网运行；API Provider 只是可选能力。
+4. 模型优先：不使用关键词规则承担自然语言意图识别。模型负责路由和参数提取。
+5. 受控执行：模型不能绕过结构校验、风险策略和用户确认；默认不静默执行命令。
+6. 可评估：本地模型和 API 模型必须使用同一组用例、工具定义和指标比较。
+
+## 3. MVP 范围
+
+### 3.1 目标用户
+
+- 忘记命令或复杂参数、但知道自己想完成什么的终端用户
+- 希望比通用 Coding Agent 更快得到一条命令的开发者
+- 需要离线、隐私友好或低成本命令规划的用户
+
+### 3.2 做什么
+
+- 接受中文、英文和中英混合请求
+- 本地 Qwen3-0.6B 或 OpenAI-compatible API 规划
+- 展示命令、假设和风险
+- 用户确认后执行，或只打印、复制、输出 JSON
+- 用 Git 风格配置切换模型、后端和语言
+- 评估模型的工具路由、参数提取、安全误调用和延迟
+
+### 3.3 不做什么
+
+- 不理解整个代码库，不执行长上下文、多轮编程任务
+- 不默认读取项目文件、终端历史或网络内容
+- 不自动安装命令依赖
+- 不支持 Windows `cmd.exe`
+- MVP 不从远程仓库安装 Adapter 或可执行插件
+- 不承诺 0.6B 模型可以可靠生成所有任意 Shell 命令
+
+## 4. 用户体验
+
+默认模式展示计划并等待确认：
 
 ```text
-意图：解压归档
-命令：mkdir -p 'xxx' && tar -xf 'xxx.tar' -C 'xxx'
-假设：目标目录不存在时自动创建；是否覆盖同名文件未指定
+意图：archive.extract
+命令：mkdir -p './backup' && tar -xf 'backup.tar' -C './backup'
+假设：目标目录不存在时创建
 风险：会写入文件
 
-执行？ [y/N/e/c]
+执行？
   y 执行
   N 取消（默认）
-  e 编辑命令后执行
-  c 复制命令
+  e 编辑（MVP 暂未实现）
+  c 复制
 ```
 
-命令在执行前必须完整展示。用户确认后才可执行；高风险操作需要额外确认。
+选项含义：
 
-### 3.3 推荐选项
+- `--print`：只打印生成的命令，不执行
+- `--json`：输出结构化计划
+- `--copy`：复制命令，不执行
+- `--yes`：跳过普通确认；高风险命令仍不自动执行
+- `--local` / `--offline`：强制使用本地模型
+- `--api`：强制使用配置的 API LLM
+- `--backend llama-cpp|mlx|server`：选择本地推理后端
+- `--model-path PATH`：临时指定本地模型
+- `--lang zh|en`：切换界面语言，默认中文
+
+缺少影响正确性或安全性的参数时，模型应返回澄清问题而不是猜测。非交互终端必须显式使用 `--print`、`--copy`、`--json` 或 `--yes`。
+
+## 5. 技术方案
+
+### 5.1 Python 核心
+
+MVP 全部使用 Python 3.9+ 实现：
 
 ```text
---offline       只使用内置适配器和本地模型
---local         强制使用本地模型
---api           允许使用配置的 API LLM
---lang zh|en    设置界面语言（默认 zh）
---config PATH   使用指定配置文件
---copy          输出并复制命令，不执行
---print         只打印命令，适合脚本调用
---explain       显示意图、参数和命令解释
---yes           跳过普通确认；高风险命令仍受策略限制
---json          输出结构化 IntentPlan
+dox/
+  cli.py          CLI、确认和执行
+  config.py       Git 风格分层配置
+  providers.py    本地与 API Provider
+  schema.py       计划解析、Shell 与风险校验
+  evaluation.py   评估集、统计和报表
 ```
 
-默认模式是生成、展示、确认执行。脚本调用应显式使用 `--print` 或 `--json`。
+基础安装不含第三方运行时依赖。`llama-cpp-python`、`mlx-lm` 和下载工具均为可选依赖。Python 的取舍是安装包不再是 Rust 单文件二进制，但能明显降低模型接入和实验成本；启动性能主要由模型加载与推理决定，而不是 CLI 语言。
 
-### 3.4 用户配置
+### 5.2 处理链路
 
-默认语言为中文；英文输入始终可以被识别。使用 `--lang en` 可切换英文界面，`--lang zh` 切回中文。配置优先级为：命令行参数 > 配置文件 > 默认值。
+```text
+自然语言输入
+  → Provider（本地 Qwen 或 API LLM）
+  → 结构化计划 / 工具调用
+  → Schema 与目标 Shell 校验
+  → 确定性风险升级
+  → 展示与用户确认
+  → PowerShell 或 POSIX Shell 执行
+```
 
-配置采用 Git 风格层级，优先级为：系统级 < 全局 < 当前目录 < 命令行参数。路径为：
+当前命令模式让模型返回包含 `command` 的 JSON 计划，以获得开放命令覆盖；评估模式则让模型从固定工具 Schema 中选择工具并提取参数。发布质量的目标架构是后者：
 
-- 系统级：macOS/Linux `/etc/doxconfig`；Windows `%PROGRAMDATA%\\dox\\config`
-- 全局：macOS/Linux `~/.doxconfig`；Windows `%USERPROFILE%\\.doxconfig`
+```text
+模型输出 {tool, arguments}
+  → Adapter 确定性渲染 macOS/Linux/PowerShell 命令
+```
+
+这项收敛很重要。真实冒烟中，Qwen3-0.6B 曾把普通 `.tar` 错写成 `tar -xzf`，并忽略目标目录。因此“能生成命令”不等于“命令正确”；在核心 Adapter 完成前，本地任意 Shell 输出只视为需要人工审查的原型能力。
+
+### 5.3 Provider 接口
+
+所有后端暴露统一接口：
+
+```text
+Provider.complete(messages, tools?, max_tokens) -> assistant message
+```
+
+- `local`：默认；完全离线
+- `api`：OpenAI-compatible `/chat/completions`
+- API Key 只从用户指定的环境变量读取
+- 请求只包含当前自然语言请求、必要的目标平台信息和工具 Schema，不默认发送项目内容或历史
+
+## 6. 默认本地模型与跨平台方案
+
+默认模型为 Qwen3-0.6B。默认量化目标是 Q4_K_M GGUF，以较小磁盘和内存占用换取可接受的路由质量。
+
+### 6.1 三种后端
+
+| Backend | 平台 | 优点 | 代价 |
+|---|---|---|---|
+| `llama-cpp` | macOS/Linux/Windows | GGUF 通用、CPU 可运行、完全离线 | 进程内首次加载较慢；Python wheel 可用性需逐平台验证 |
+| `mlx` | Apple Silicon macOS | Metal 加速好，延迟通常更低 | 只适用于 Apple Silicon，模型格式不与 GGUF 共用 |
+| `server` | 全平台 | 模型常驻，连续调用快；可连接 llama.cpp/Ollama 等 | 需要用户单独启动和管理本地服务 |
+
+`auto` 在 MVP 中解析为 `llama-cpp`，确保三平台默认行为一致。如果配置了本地 endpoint，则可使用 `server`。MLX 是 Apple Silicon 的显式优化项，而不是跨平台默认项。
+
+### 6.2 内嵌库与 daemon 的决定
+
+MVP 默认采用进程内 `llama-cpp-python`：概念和安装路径最简单，不引入后台进程生命周期、端口、IPC 或服务权限。
+
+同时保留 `server` backend 作为可选常驻方案，它已经能连接任何 OpenAI-compatible 本地服务。暂不自研 `doxd`，因为它会增加安装、升级、崩溃恢复和 Windows 服务管理成本。若冷启动实测成为主要体验瓶颈，再把受控的本地 daemon 作为独立里程碑。
+
+### 6.3 模型分发
+
+开发阶段的 `dox model download` 使用公开的社区 Q4_K_M GGUF。正式发行不能仅依赖社区转换，必须从 Qwen 官方 Apache-2.0 权重构建发布文件，并固定来源、版本和 SHA-256。模型不嵌入 Python wheel，以免基础安装膨胀；用户可以下载默认模型，也可以配置本地路径。
+
+## 7. 配置
+
+配置方式向 Git 学习。优先级为：系统级 < 全局 < 当前目录 < 命令行。
+
+- macOS/Linux 系统级：`/etc/doxconfig`
+- Windows 系统级：`%PROGRAMDATA%\dox\config`
+- macOS/Linux 全局：`~/.doxconfig`
+- Windows 全局：`%USERPROFILE%\.doxconfig`
 - 当前目录：`./.dox/config`
 
-通过 `dox config` 读写配置，不保存 API Key 本身，只保存 API Key 环境变量名：
-
 ```bash
-dox config --global llm.provider openai-compatible
-dox config --global llm.base-url https://api.openai.com/v1
-dox config --global llm.model gpt-4o-mini
-dox config --global llm.api-key-env OPENAI_API_KEY
+dox config --global llm.provider local
+dox config --global local.backend auto
+dox config --global local.model-path /path/to/Qwen3-0.6B-Q4_K_M.gguf
 dox config --global core.language zh
 dox config --list
 ```
 
-API Key 通过环境变量提供。`--config PATH` 可临时指定单个配置文件。当前生效的 LLM 配置项为 `llm.provider`、`llm.base-url`、`llm.model`、`llm.api-key-env` 和 `llm.timeout-seconds`。
+API 示例：
 
-### 3.5 命令修正（不属于 P0）
-
-MVP 只支持当前请求的一次生成。用户可以选择 `e` 手动编辑命令。
-
-后续可增加会话内的自然语言修正，例如：
-
-```text
-dox "查找大于 100MB 的日志文件"
-# 生成 find 命令
-
-补充：排除 node_modules，只看最近 7 天
+```bash
+dox config --global llm.base-url https://api.openai.com/v1
+dox config --global llm.model gpt-4o-mini
+dox config --global llm.api-key-env OPENAI_API_KEY
+dox --api --print "查看 git 状态"
 ```
 
-这个功能只需要保留当前 `IntentPlan`，不需要完整的对话历史或项目上下文，适合作为 P1 的受限功能。
+## 8. 评估模式
 
-## 4. 总体架构
+命令：
 
-```text
-输入文本
-  → 环境探测（平台、Shell、已安装工具）
-  → 意图识别与槽位提取
-  → 适配器选择
-  → 平台命令渲染
-  → Shell/参数安全检查
-  → 风险评估与必要追问
-  → 展示、确认、执行或复制
+```bash
+dox eval --local --output reports/qwen-local.json --verbose
+dox eval --api --output reports/api.json --verbose
 ```
 
-### 4.1 结构化中间表示
+本地模型和 API 使用相同的 OpenAI function tool Schema 和 JSONL 用例。首版报表包含：
 
-模型和规则层统一输出 `IntentPlan`，禁止直接把自由文本交给执行器：
+- 工具 exact match
+- 正常请求的参数 exact match
+- negative、irrelevant 和危险拒绝场景的 critical false-call
+- 单条请求错误数
+- p50、p95 和平均延迟
+- 失败明细与完整 JSON 行级结果
 
-```json
-{
-  "intent": "archive.extract",
-  "args": {
-    "source": "xxx.tar",
-    "destination": "xxx",
-    "overwrite": null
-  },
-  "platform": "macos",
-  "shell": "zsh",
-  "tools": ["tar"],
-  "risk": "write",
-  "assumptions": ["目标目录不存在时创建"],
-  "clarification": null
-}
-```
+可通过 `--cases` 使用自定义数据集，通过可重复的 `--locale` 筛选 `zh`、`en`、`mixed`，通过 `--limit` 做冒烟测试。单条失败不会中止整份报告。
 
-如果缺少影响正确性或安全性的参数，`clarification` 必须有值，dox 应先追问而不是猜测。
+退出码：
 
-### 4.2 执行模型
+- `0`：评估完成且没有 critical false-call
+- `1`：评估完成但存在 critical false-call
+- `2`：配置、用例或整体初始化失败
 
-内部执行优先使用原生进程 API 和参数数组：
+注意：退出码 `0` 不代表准确率达标；CI 或发布流程还需要读取 JSON 指标并应用质量门槛。
 
-```text
-["tar", "-xf", "xxx.tar", "-C", "xxx"]
-```
+## 9. Adapter 与命令覆盖
 
-只有确实需要管道、重定向或条件连接时才构造 Shell AST，并使用目标 Shell 的渲染器。展示给用户的 Shell 文本与内部执行计划必须保持可追溯对应关系。
+“尽可能多的意图”不等于把每个自然语言表达写成规则。模型负责把各种表达路由到结构化能力，Adapter 负责确定性命令生成。
 
-### 4.3 支持判定与能力分级
+优先能力：
 
-dox 采用模型优先、受控执行的判定：模型可以理解开放式请求并提出命令，但只有通过结构化 Schema、平台检查和安全策略的计划才允许进入确认流程。未知请求不能直接执行。
+- 文件：复制、移动、目录、大小、批量重命名
+- 查找：名称、扩展名、大小、时间
+- 文本：搜索、统计、日志尾部
+- 归档：tar、zip、7z 打包和解压
+- Git：status、log、diff、分支和安全 checkout
+- 系统：进程、端口、磁盘和系统信息
+- 网络：DNS、HTTP 基础诊断
+- 包管理：常见语言包管理器的显式安装请求
 
-每次规划应归入以下状态之一：
+当 Adapter 数量增长时，先用模型选择类别或候选集合，再进行工具调用，避免把数百个完整 Schema 全部塞入一次上下文。新增 Adapter 应包含工具名、参数 Schema、平台、PowerShell/POSIX 渲染器、风险和测试，不要求重新训练模型。
 
-- `verified`：模型输出通过 Schema、平台和安全校验，并有对应测试或明确的工具能力
-- `clarify`：意图已识别，但缺少影响正确性或安全性的参数
-- `inferred`：由模型完成路由或参数推断，经过 Schema 和安全检查后可预览，但尚无完整测试
-- `unsupported`：模型无法可靠提出计划，或当前平台/依赖不满足
-- `blocked`：命令可能危险，或无法通过安全检查
+MVP 只加载内置能力和用户本地文件。这里的“远程 Adapter 包”是指从官方或社区仓库下载新的命令描述，不是上传用户文件。远程分发需要签名、审核和供应链策略，推迟到后续版本。
 
-覆盖范围不应只用“关键词命中率”衡量。评估集需要分别统计：同义表达、参数缺失、复杂组合、未知命令和危险请求。
+## 10. 安全边界
 
-## 5. 适配器设计
+- 默认取消，执行前始终展示最终命令
+- 模型声明的风险只能被确定性代码升级，不能降级
+- 高风险命令禁止通过 `--yes` 静默执行
+- 拒绝控制字符和不匹配当前平台的 Shell
+- Windows 只允许 PowerShell 计划
+- 删除、根目录、权限、磁盘、`sudo`、强制 Git 和下载执行需要更严格策略
+- 命令不存在时明确报错，不自动安装
+- API Key 不写入 dox 配置，不上传遥测或命令历史
 
-每个命令能力由 Adapter 描述。Adapter 可内置，也可从本地插件目录加载。
+当前风险扫描只是 MVP 下限，不是完整 Shell parser。进入可发布阶段前，需要将高频能力迁移到 Adapter/argv 执行，并为管道、重定向、引号和路径边界增加平台测试。
 
-```yaml
-id: archive.extract
-version: 1
-platforms: [macos, linux, windows]
-tools: [tar, 7z]
+## 11. 里程碑
 
-slots:
-  source: {type: path, required: true}
-  destination: {type: path, required: true}
-  overwrite: {type: boolean, required: false}
+### P0：Python 模型闭环（当前）
 
-render:
-  posix: ...
-  powershell: ...
-
-risk: write
-examples:
-  - 解压 xxx.tar 到 xxx
-  - extract an archive into a folder
-
-tests:
-  - ...
-```
-
-Adapter 必须声明：
-
-- 支持的平台和 Shell
-- 依赖的可执行文件及探测方式
-- 参数 Schema、默认值和必填项
-- 各平台渲染器
-- 风险等级和是否支持 dry-run
-- 自然语言示例及可自动化测试
-
-新增 Adapter 不应要求重新训练模型。模型只需将请求路由到 `id` 并填充 `slots`。
-
-### 5.1 Adapter 的分发边界
-
-“远程包”指从 URL、Git 仓库或官方 Adapter 仓库安装新的命令描述，不是上传用户文件或终端数据。例如，社区可以额外提供 `ffmpeg`、`kubectl` 或企业内部 CLI 的 Adapter。
-
-远程 Adapter 的价值是：新增命令无需升级 dox 主程序，也无需重新训练模型。它同时带来供应链和执行安全风险，尤其是包含任意插件代码时。
-
-因此 MVP 只支持：
-
-- 内置 Adapter
-- 用户从本地路径加载的声明式 Adapter
-
-后续再考虑官方远程仓库。远程包应优先采用无代码的声明式格式，包含版本、平台、依赖、风险和测试；需要执行代码的插件必须经过签名、权限声明和用户确认。
-
-## 6. 首版意图集合
-
-优先实现高频、可测试、边界清晰的能力：
-
-- 文件：复制、移动、创建目录、查看大小、批量重命名
-- 查找：按名称、扩展名、大小、修改时间查找
-- 文本：grep/rg 搜索、统计行数、查看日志尾部
-- 归档：tar/zip/7z 打包和解压
-- Git：status、log、diff、分支查看、普通 checkout
-- 系统：进程、端口、磁盘空间、系统信息
-- 网络：DNS/HTTP 基础诊断
-
-删除、批量覆盖、权限修改、磁盘写入、强制 Git 操作、带 `sudo` 的命令在首版只允许生成和展示，默认不自动执行。
-
-## 7. 模型策略
-
-本地模型调研和候选比较见 [LOCAL-MODEL-RESEARCH.md](LOCAL-MODEL-RESEARCH.md)。当前结论是先以 Needle 2 做 PoC，同时保留 FunctionGemma 和 Qwen3-0.6B 作为对照，不在验证前锁定默认本地模型。
-
-### 7.1 路由顺序
-
-```text
-用户配置的 API LLM → 本地小模型 → 可选的确定性降级
-```
-
-P0 先使用 API LLM 获得自然语言覆盖能力。规则不再承担主要意图识别，只用于输入规范化、输出校验、风险识别和必要的安全阻断。后续本地模型作为离线 Provider 接入；确定性降级仅覆盖明确的安全场景。
-
-### 7.2 本地模型
-
-- 支持 0.5B～3B 级量化指令模型
-- 纯 CPU 可运行，模型格式优先选择便于跨平台分发的格式
-- 采用约束解码，只允许输出 `IntentPlan` Schema
-- 模型包可独立安装，不应阻塞 CLI 的 API 功能
-- 通过常驻进程减少冷启动时间
-
-### 7.3 API LLM
-
-实现统一 Provider 接口，首版支持 OpenAI-compatible endpoint，并预留 Ollama 等本地服务：
-
-```text
-Provider.generate(request) -> IntentPlan
-```
-
-API 调用必须显式配置或显式启用。默认只发送用户请求和必要的环境信息，不发送项目内容、历史记录或文件内容。
-
-### 7.4 本地模型：内嵌库与独立 daemon
-
-两种方式都通过同一个 `Provider` 接口暴露，避免上层架构绑定具体部署方式。
-
-内嵌库（CLI 进程内加载模型）：
-
-- 优点：安装简单、没有 IPC 和后台进程管理、离线行为直观、跨平台实现成本低
-- 缺点：每次启动可能重复加载模型，冷启动较慢；CLI 进程会占用更多内存；同时切换模型或服务多个请求不方便
-
-独立 daemon（例如 `doxd`）：
-
-- 优点：模型常驻内存，连续请求延迟稳定；可以统一管理模型下载、更新和多个 Provider；未来可服务编辑器或其他客户端
-- 缺点：安装和升级更复杂；需要处理后台进程生命周期、权限、崩溃恢复和本地 IPC 安全；Windows 需要额外适配 named pipe 或服务管理
-
-建议：P0 先实现 API Provider，并保留统一 `Provider` 接口。未来本地模型采用内嵌库或可选 `doxd`，不改变上层规划和确认流程。
-
-### 7.5 模型接入难度与边界
-
-模型接入本身不是最大难点，让模型直接生成任意 Shell 并在多平台可靠执行才是难点。推荐模型只负责：
-
-- 从 Adapter 候选中选择意图
-- 提取和补全参数槽位
-- 判断是否需要追问
-
-命令渲染、依赖检查、风险评估和执行仍由确定性代码完成。
-
-接入顺序：
-
-1. 先定义 `Provider` 接口和固定的 `IntentPlan` Schema
-2. 让 API LLM 直接生成结构化计划，不要求模型进行长推理
-3. 对输出做 Schema、平台、依赖和安全校验
-4. 校验失败时降级为 `clarify` 或 `unsupported`，不能直接执行
-5. 用同一接口接入本地小模型，比较质量、延迟和隐私收益
-
-API LLM Provider 的工程工作量最低，但需要处理网络、隐私、密钥和 JSON 校验。本地 CPU 模型需要增加推理后端、模型分发、量化格式、跨平台构建和冷启动测试。具体模型型号应在建立评测集后选择，不在 P0 代码中绑定。
-
-当 Adapter 数量增长到上百个时，应先按类别和工具做候选检索，再交给模型，而不是把整个命令目录塞进一次上下文。新增 Adapter 仍然只需要定义 Schema、示例、渲染器和测试，不需要重新训练模型。
-
-## 8. 安全策略
-
-- 默认不执行，默认确认选项为取消
-- 命令、参数、假设、风险必须在执行前展示
-- 对删除、覆盖、权限、网络、`sudo`、磁盘和强制 Git 操作提高确认等级
-- 尽可能使用 argv 执行，避免字符串拼接和隐式 Shell 解析
-- 对路径、引号、通配符、重定向和管道进行平台相关转义和检查
-- 能够 dry-run 的工具优先先执行 dry-run
-- 命令不存在或依赖缺失时明确提示，不自动安装
-- 插件声明权限和风险；远程插件需要签名或用户明确确认
-- 记录本地执行历史时提供关闭选项，默认不上传
-
-### 8.1 执行历史
-
-执行历史不是 Shell 历史。它是 dox 生成的 `IntentPlan`、最终命令、时间、结果状态和模型来源，用于审计、重复执行和后续修正。
-
-历史可能包含本地路径、主机名或用户输入，因此建议 MVP 采用：
-
-- 仅保存在本机
-- 默认保留最近 100 条或 30 天，先到者清理
-- 不保存命令输出，不上传遥测
-- 对 API Key、Token 等常见敏感值做脱敏
-- 提供 `dox history`、`dox history clear` 和关闭历史的配置
-
-这比永久保存完整终端记录更容易解释，也足以支持 P1 的会话内修正。是否启用跨设备同步属于更后续的产品决策。
-
-## 9. 工程建议
-
-核心 CLI 选用 Rust，以获得单文件分发、较小运行时开销、快速启动和可靠的跨平台进程控制。适配器使用声明式 YAML/JSON，复杂能力再通过插件进程扩展。P0 尽量只使用 Rust 标准库；模型推理以后端可选组件接入，避免模型能力成为基础安装依赖。
-
-预期目录结构：
-
-```text
-src/
-  cli/
-  planner/
-  adapters/
-  renderer/
-  safety/
-  providers/
-adapters/
-  builtin/
-tests/
-  fixtures/
-  integration/
-docs/
-```
-
-## 10. 里程碑
-
-### P0：API 模型闭环
-
-- CLI 参数解析
-- 平台和 Shell 探测
+- Python CLI 与 Git 风格配置
+- 默认本地 Qwen3-0.6B
+- llama.cpp、MLX、server 三种本地 backend
 - OpenAI-compatible API Provider
-- 结构化 IntentPlan 输出
-- 命令预览、复制、确认执行
-- 基础风险分级
-- macOS/Linux/Windows CI
+- 命令计划展示、复制、确认和执行
+- 中文默认、英文支持、Windows PowerShell
+- `dox eval` 终端与 JSON 报表
 
-### P1：本地模型与扩展
+### P0.5：安装与质量收敛
 
-- 本地模型 Provider
-- Needle 2 sidecar PoC 及中文/英文评测
-- IntentPlan 约束输出
-- 20～30 个意图
-- 缺参追问
-- 量化模型安装和版本管理
-- 当前会话内的自然语言命令修正
+- macOS/Linux/Windows 安装矩阵和预构建 wheel 验证
+- 从官方权重产出带校验和的默认 GGUF
+- 扩充真实中文、英文、混合表达与拒绝用例
+- 为准确率、安全误调用、冷/热延迟建立发布门槛
 
-### P2：扩展生态
+### P1：确定性 Adapter 闭环
 
-- 用户自定义 Adapter
-- Adapter 测试命令
-- 官方远程 Adapter 仓库
-- 本地缓存和用户偏好
+- 将高频命令从模型直出 Shell 迁移为工具调用
+- POSIX 与 PowerShell 确定性渲染
+- 依赖探测、缺参追问和 Adapter 自动测试
+- 根据数量增加分层候选路由
 
-## 11. MVP 验收指标
+### P2：性能与扩展
 
-- API 模型在评测集上的结构化计划语义成功率达到 90% 以上
-- 经过校验的计划整体执行成功率达到 90% 以上
-- 高风险命令误执行在测试集中的目标为 0
-- API 请求的 p95 延迟、超时和失败率单独记录；本地模型接入后再记录热/冷启动延迟
-- 缺少关键参数时主动追问，而不是生成猜测命令
-- 三个平台的核心 Adapter 均有自动化测试
-- 所有执行路径都能追溯到结构化 IntentPlan
+- 根据实测决定是否提供 `doxd`
+- 声明式本地 Adapter
+- 经过签名和审核的远程 Adapter 仓库
+- 受限的当前会话命令修正
 
-测试集应同时包含中文、英文、混合技术词、空格路径、特殊字符路径和故意含糊的请求。
+## 12. 验收标准
 
-## 12. 已确定与待决定事项
+- 工具 exact match 与正常参数 exact match 均达到约定门槛；初始目标 90%
+- critical false-call 为 0
+- 缺少关键参数时拒绝调用或提出澄清，不猜测
+- macOS、Linux、Windows PowerShell 均有自动化测试和安装验证
+- 默认本地模式断网可用，API 模式必须显式选择或配置
+- 报表记录 Provider、平台、逐条结果和延迟
+- 所有执行路径经过结构、Shell、风险和确认层
+
+当前本地前三条冒烟用例通过不代表完整质量达标；必须以完整评估集、跨平台执行测试和失败样本回归作为发布依据。
+
+## 13. 已确定与后续决策
 
 已确定：
 
-- Windows 首版只支持 PowerShell，不支持 `cmd.exe`
-- P0 使用 API Provider，并通过 Provider 抽象为本地模型和 daemon 留出空间
-- P0 只支持内置和本地声明式 Adapter，不安装远程包
-- 执行历史默认本地保留最近 100 条或 30 天，不保存输出、不上传
-- 自然语言修正推迟到 P1，只保留当前会话的 `IntentPlan`
-- 核心 CLI 选用 Rust，P0 不要求 Python、Node.js 或容器运行时
-- 安全校验和命令执行在无网络时仍可运行；P0 的自然语言规划需要显式配置 API Provider，后续本地模型接入后才能完全离线规划
-- 本地模型首选 Needle 2 做 PoC；FunctionGemma、Qwen3-0.6B 作为对照
+- 全部切换到 Python 3.9+
+- 默认本地模型为 Qwen3-0.6B
+- 跨平台默认为 GGUF + llama.cpp
+- Apple Silicon 可选 MLX，连续调用可选本地 server
+- Windows 只支持 PowerShell
+- 默认中文，同时支持英文和混合输入
+- API Provider 可选，离线能力不依赖 API
+- 不用关键词规则承担意图识别
+- 增加本地/API 共用的评估模式和 JSON 报表
 
-仍待决定：
+仍需用数据决定：
 
-- 本地模型具体格式和推理后端
-- 是否在 P1 发布可选 `doxd`
-- 远程 Adapter 仓库的签名、审核和版本策略
-- 是否提供匿名、完全自愿的质量遥测
+- Q4_K_M 正式转换的最终模型文件、校验和和分发地址
+- 三个平台最省心的安装包形式，尤其是 Windows 的 llama.cpp 依赖
+- Qwen3-0.6B 达不到完整质量门槛时，是优化提示、微调路由模型，还是把复杂请求升级到 API
+- 是否以及何时自研常驻 `doxd`

@@ -1,153 +1,193 @@
 # dox
 
-轻量、模型优先的自然语言命令路由器。输入一句话，dox 让 LLM 生成结构化命令计划，展示假设和风险，确认后再执行。
+轻量、模型优先的自然语言命令路由器。输入一句话，dox 使用本地 Qwen3-0.6B 或 OpenAI-compatible API 生成结构化命令计划，展示风险并在确认后执行。
 
-## 当前状态
+当前实现已经全部迁移到 Python。默认 Provider 是本地 Qwen3-0.6B；macOS、Linux 和 Windows 共用 GGUF + llama.cpp 路径，Apple Silicon 可以显式选择 MLX 加速。Windows 只支持 PowerShell，不支持 `cmd.exe`。
 
-这是 P0 原型，默认使用 OpenAI-compatible API Provider，可路由任意命令请求（由模型能力和安全校验共同决定）。支持 macOS/Linux 和 PowerShell 目标；Windows `cmd.exe` 不在支持范围内。
+## 安装
 
-## 开发构建
-
-需要 Rust 1.85+：
+需要 Python 3.9+。开发环境安装：
 
 ```bash
-cargo test
-cargo build --release
+python3 -m venv .venv
+.venv/bin/python -m pip install -e '.[local,dev]'
 ```
 
-生成的单文件二进制位于 `target/release/dox`。P0 不需要 Python、Node.js 或本地模型文件；API 模式需要网络。未来的本地 Provider 仍会保持可选。
+Windows PowerShell：
+
+```powershell
+py -m venv .venv
+.venv\Scripts\python -m pip install -e ".[local,dev]"
+```
+
+安装完成后可直接运行 `dox`。只使用 API、不安装本地推理依赖时，执行 `python -m pip install -e .`。
+
+### 本地模型
+
+默认模型为 Qwen3-0.6B Q4_K_M GGUF：
+
+```bash
+dox model path
+python -m pip install huggingface-hub
+dox model download
+```
+
+`dox model download` 当前使用公开的社区 Q4_K_M 转换以减小包体。正式发行包会由项目从 Qwen 官方 Apache-2.0 权重自行转换并固定 SHA-256。也可以配置自己验证过的模型：
+
+```bash
+dox config --global local.model-path /path/to/Qwen3-0.6B-Q4_K_M.gguf
+```
 
 ## 使用
 
+默认完全离线，第一次推理需要加载模型：
+
 ```bash
 dox "解压 backup.tar 到 ./backup"
-dox --print "extract backup.zip into ./backup"
-dox --json "解压 backup.tar 到 ./backup"
+dox --print "查找 src 下所有 rs 文件"
+dox --json "查看当前 git 状态"
 ```
 
-首次使用前配置 API Provider（API Key 只从环境变量读取）：
+常用选项：
+
+- `--print`：只打印命令，不执行
+- `--json`：输出结构化计划
+- `--copy`：复制命令
+- `--yes`：跳过普通确认，高风险命令除外
+- `--local` / `--offline`：强制本地模型
+- `--api`：强制 API Provider
+- `--backend llama-cpp|mlx|server`：临时选择本地 backend
+- `--model-path PATH`：临时指定本地模型
+- `--lang zh|en`：设置界面语言，默认中文
+
+## 本地推理后端
+
+| Backend | 平台 | 用途 |
+|---|---|---|
+| `llama-cpp` | macOS/Linux/Windows | 默认；GGUF、纯 CPU、跨平台 |
+| `mlx` | Apple Silicon macOS | 可选加速；需要 `mlx-lm` 和 MLX 模型目录 |
+| `server` | 全平台 | 连接本机的 llama.cpp/Ollama/vLLM 等 OpenAI-compatible 服务 |
+
+默认 `auto` 当前解析为 `llama-cpp`，确保三平台语义一致。MLX 需要显式启用：
 
 ```bash
-dox config --global llm.provider openai-compatible
+python -m pip install mlx-lm
+dox config --global local.backend mlx
+dox config --global local.model-path /path/to/qwen3-0.6b-mlx-4bit
+```
+
+连接常驻本地服务可以避免每次 CLI 调用重新加载模型：
+
+```bash
+dox config --global local.backend server
+dox config --global local.endpoint http://127.0.0.1:8080/v1
+dox config --global local.model Qwen3-0.6B
+```
+
+这是当前最值得继续优化的跨平台方案：dox 核心保持纯 Python 标准库，模型进程可以常驻；底层服务仍可由 llama.cpp 在 CPU、Metal、CUDA 或 Vulkan 上运行。
+
+## API Provider
+
+配置方式保持 Git 风格，API Key 只从环境变量读取：
+
+```bash
 dox config --global llm.base-url https://api.openai.com/v1
 dox config --global llm.model gpt-4o-mini
 dox config --global llm.api-key-env OPENAI_API_KEY
 export OPENAI_API_KEY="你的 API Key"
+
+dox --api --print "解压 backup.tar 到 ./backup"
 ```
 
-其他 OpenAI-compatible 服务只需替换 `llm.base-url`、`llm.model` 和 API Key 环境变量。默认会先展示命令并等待确认。使用 `--print` 只输出命令，使用 `--copy` 复制命令，使用 `--yes` 跳过普通确认（高风险命令仍不能自动执行）。
+API Provider 接受 OpenAI-compatible `/chat/completions` 接口。
 
-默认界面为中文，但英文输入可直接使用；英文界面可通过 `--lang en` 开启：
+## 模型评估模式
+
+`dox eval` 使用相同工具 Schema、相同请求集比较本地模型和 API LLM，统计工具 exact match、正常请求参数 exact match、critical false-call、请求错误和 p50/p95 延迟。
 
 ```bash
-dox --lang en --print "extract backup.zip into ./backup"
+# 本地模型
+dox eval --local --output reports/qwen-local.json --verbose
+
+# 已配置的 API 模型
+dox eval --api --output reports/api.json --verbose
+
+# 临时指定 API，不修改配置
+dox eval --api \
+  --base-url https://api.example.com/v1 \
+  --model example-model \
+  --api-key-env EXAMPLE_API_KEY \
+  --output reports/example-model.json
 ```
 
-用户配置采用 Git 风格的层级配置和 `dox config` 子命令。优先级为：系统级 < 全局 < 当前目录 < 命令行参数。
+筛选和自定义用例：
 
-配置文件路径为：
+```bash
+dox eval --api --locale zh --locale mixed --limit 20
+dox eval --api --cases ./my-cases.jsonl
+```
 
-- 系统级：macOS/Linux `/etc/doxconfig`；Windows `%PROGRAMDATA%\\dox\\config`
-- 全局：macOS/Linux `~/.doxconfig`；Windows `%USERPROFILE%\\.doxconfig`
+评估返回码：无 critical false-call 时 `0`，存在 critical false-call 时 `1`，配置或整体请求失败时 `2`。即使单条 API 请求失败，报告仍会继续生成并记录错误。
+
+用例格式：
+
+```json
+{"id":"extract","locale":"zh","request":"解压 a.tar 到 ./out","expected_tool":"extract_archive","expected_args":{"source":"a.tar","destination":"./out"},"class":"normal"}
+```
+
+## 配置
+
+优先级为系统级 < 全局 < 当前目录 < 命令行：
+
+- 系统级：macOS/Linux `/etc/doxconfig`；Windows `%PROGRAMDATA%\dox\config`
+- 全局：macOS/Linux `~/.doxconfig`；Windows `%USERPROFILE%\.doxconfig`
 - 当前目录：`./.dox/config`
-
-查看和修改配置：
 
 ```bash
 dox config --list
 dox config --global core.language en
-dox config --local llm.model gpt-4o-mini
-dox config --unset --global llm.model
+dox config --global llm.provider local
+dox config --global local.backend auto
+dox config --unset --global local.model-path
 ```
 
-配置文件是简单 TOML 子集，例如：
+完整配置示例：
 
 ```toml
 [core]
 language = "zh"
 
 [llm]
-provider = "openai-compatible"
+provider = "local"
 base-url = "https://api.openai.com/v1"
 model = "gpt-4o-mini"
 api-key-env = "OPENAI_API_KEY"
 timeout-seconds = "60"
-```
 
-也可以用 `--config PATH` 临时指定单个配置文件：
-
-```bash
-dox --config ./dox-test.toml --print "extract backup.zip into ./backup"
+[local]
+model = "Qwen3-0.6B"
+backend = "auto"
+model-path = "/path/to/Qwen3-0.6B-Q4_K_M.gguf"
+endpoint = ""
+threads = "0"
+context-size = "2048"
 ```
 
 ## 开发与测试
 
-确认工具链已安装：
+```bash
+.venv/bin/pytest -q
+.venv/bin/python -m dox --help
+.venv/bin/python -m dox eval --help
+```
+
+本地 Qwen 冒烟测试：
 
 ```bash
-rustc --version
-cargo --version
+.venv/bin/python -m dox --local --print "查看 git 状态"
+.venv/bin/python -m dox eval --local --limit 3 --verbose
 ```
 
-开发时直接运行，不需要手动编译：
+模型只负责规划和路由。命令风险升级、确认、高风险 `--yes` 阻断及执行仍由确定性代码控制；模型输出不会直接静默执行。
 
-```bash
-cargo run -- --help
-cargo run -- --print "解压 backup.tar 到 ./backup"
-cargo run -- --json "解压 backup.tar 到 ./backup"
-```
-
-`cargo run --` 中的 `--` 用于分隔 Cargo 参数和 dox 参数。`--print`、`--json` 只生成计划，不会接触文件。
-
-运行测试：
-
-```bash
-cargo fmt --check
-cargo test
-```
-
-构建优化后的单文件版本：
-
-```bash
-cargo build --release
-./target/release/dox --print "解压 backup.tar 到 ./backup"
-```
-
-如果希望像普通命令一样调用，可以安装到当前用户的 Cargo bin 目录：
-
-```bash
-cargo install --path .
-dox --print "解压 backup.tar 到 ./backup"
-```
-
-### 端到端解压测试
-
-以下测试只在临时目录中创建文件。`--yes` 会真正执行命令，其他模式默认不会执行：
-
-```bash
-DOX_TEST_DIR="$(mktemp -d)"
-mkdir -p "$DOX_TEST_DIR/source" "$DOX_TEST_DIR/out"
-printf 'dox smoke test\n' > "$DOX_TEST_DIR/source/hello.txt"
-tar -cf "$DOX_TEST_DIR/archive.tar" -C "$DOX_TEST_DIR/source" hello.txt
-
-cargo run -- --yes "解压 '$DOX_TEST_DIR/archive.tar' 到 '$DOX_TEST_DIR/out'"
-cat "$DOX_TEST_DIR/out/hello.txt"
-```
-
-Windows PowerShell 的等价测试可以使用：
-
-```powershell
-$DoxTestDir = Join-Path $env:TEMP "dox-smoke"
-New-Item -ItemType Directory -Force "$DoxTestDir\source", "$DoxTestDir\out" | Out-Null
-Set-Content "$DoxTestDir\source\hello.txt" "dox smoke test"
-tar -cf "$DoxTestDir\archive.tar" -C "$DoxTestDir\source" hello.txt
-
-cargo run -- --yes "解压 '$DoxTestDir\archive.tar' 到 '$DoxTestDir\out'"
-Get-Content "$DoxTestDir\out\hello.txt"
-```
-
-`--api` 可以强制使用 API Provider；`--offline` 和 `--local` 会在本版本明确提示本地 Provider 尚未接入。API 返回的计划会经过 JSON、Shell、风险和控制字符校验，默认仍需确认后执行。
-
-## 设计文档
-
-详见 [MVP.md](MVP.md) 和 [本地小模型调研](LOCAL-MODEL-RESEARCH.md)。
+设计细节见 [MVP.md](MVP.md)，模型实验见 [LOCAL-MODEL-RESEARCH.md](LOCAL-MODEL-RESEARCH.md) 和 [experiments/README.md](experiments/README.md)。
