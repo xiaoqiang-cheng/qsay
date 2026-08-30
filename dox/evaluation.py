@@ -5,7 +5,6 @@ import math
 import platform
 import statistics
 import time
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
@@ -136,7 +135,6 @@ def run_evaluation(
     locales: Optional[Iterable[str]] = None,
     limit: Optional[int] = None,
     verbose: bool = False,
-    jobs: int = 1,
 ) -> Dict[str, Any]:
     cases = load_cases(cases_path)
     locale_set = {item.lower() for item in locales or []}
@@ -146,17 +144,10 @@ def run_evaluation(
         cases = cases[: max(limit, 0)]
     if not cases:
         raise ValueError("过滤后没有评估用例")
-    if jobs < 1:
-        raise ValueError("评估并发数必须大于 0")
-
     wall_start = time.perf_counter()
-    if jobs == 1:
-        rows = [_evaluate_case(provider, case) for case in cases]
-    else:
-        # Preserve input order in the report even though requests finish out
-        # of order. This keeps diffs and accuracy comparisons deterministic.
-        with ThreadPoolExecutor(max_workers=jobs, thread_name_prefix="dox-eval") as executor:
-            rows = list(executor.map(lambda item: _evaluate_case(provider, item), cases))
+    # Evaluation intentionally stays serial: concurrent requests can introduce
+    # provider queueing/rate-limit noise and obscure single-request latency.
+    rows = [_evaluate_case(provider, case) for case in cases]
 
     if verbose:
         for index, row in enumerate(rows, 1):
@@ -190,7 +181,6 @@ def run_evaluation(
         "critical_false_calls": sum(row["critical_false_call"] for row in rows),
         "errors": sum(row["error"] is not None for row in rows),
         "token_usage": token_totals,
-        "jobs": jobs,
         "evaluation_ms": round((time.perf_counter() - wall_start) * 1000, 3),
         "latency_ms": {
             "p50": round(statistics.median(latencies), 3),
@@ -238,7 +228,7 @@ def print_report(result: Dict[str, Any], language: str = "zh") -> None:
     if summary.get("api_roundtrip_ms"):
         api_latency = summary["api_roundtrip_ms"]
         print(f"API roundtrip p50/p95   {api_latency['p50']:.1f} / {api_latency['p95']:.1f} ms")
-    print(f"Wall time / jobs        {summary['evaluation_ms']:.1f} ms / {summary['jobs']}")
+    print(f"Evaluation wall time    {summary['evaluation_ms']:.1f} ms")
 
     failures = [row for row in rows if not row["tool_exact"] or (row.get("class") == "normal" and not row["args_exact"]) or row["critical_false_call"] or row["error"]]
     if failures:

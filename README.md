@@ -138,9 +138,6 @@ dox eval --local --output reports/qwen-local.json --verbose
 # 已配置的 API 模型
 dox eval --api --output reports/api.json --verbose
 
-# 4 路并发，缩短完整 API 评估的墙钟时间
-dox eval --api --jobs 4 --output reports/api.json --verbose
-
 # 临时指定 API endpoint 和模型；API Key 仍从配置读取
 dox eval --api \
   --base-url https://api.example.com/v1 \
@@ -157,7 +154,7 @@ dox eval --api --cases ./my-cases.jsonl
 
 评估返回码：无 critical false-call 时 `0`，存在 critical false-call 时 `1`，配置或整体请求失败时 `2`。即使单条 API 请求失败，报告仍会继续生成并记录错误。
 
-评估报表也会记录逐条 `token_usage`、请求/API 往返耗时，以及累计输入、输出和 reasoning token，方便比较 API、本地模型和不同 Prompt 的成本与延迟。API 评估可用 `--jobs N` 并发执行；它缩短整份报告的墙钟时间，不会降低单条请求延迟，并可能触发服务商限流。进程内本地模型固定使用 `--jobs 1`。
+评估报表也会记录逐条 `token_usage`、请求/API 往返耗时，以及累计输入、输出和 reasoning token，方便比较 API、本地模型和不同 Prompt 的成本与延迟。评估保持串行，避免并发排队和限流干扰单条延迟数据。
 
 当前 Qwen3-0.6B Q4_K_M 在本开发机的 33 条完整基线为：工具 exact match 72.7%、正常参数 exact match 94.7%、4 次 critical false-call，p50/p95 约 1.85/1.96 秒。它足以验证本地闭环，但尚未达到发布门槛；否定句、无关请求和危险路径必须继续由确定性安全层阻断。
 

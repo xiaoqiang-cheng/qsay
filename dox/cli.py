@@ -262,19 +262,16 @@ def evaluate_command(argv: Sequence[str]) -> int:
     eval_parser.add_argument("--lang", choices=["zh", "en"])
     eval_parser.add_argument("--locale", action="append", choices=["zh", "en", "mixed"], help="只测指定语言，可重复")
     eval_parser.add_argument("--limit", type=int, help="只测前 N 条")
-    eval_parser.add_argument("--jobs", type=int, default=1, help="API 评估并发请求数（默认 1）")
     eval_parser.add_argument("--verbose", action="store_true")
     args = eval_parser.parse_args(argv)
     config = load_config(args.config)
     language = args.lang or config.language
     try:
         if args.local or (not args.api and config.provider.lower() == "local"):
-            if args.jobs > 1:
-                raise RuntimeError("本地模型评估暂不支持并发；请使用 `--jobs 1`")
             provider = local_provider(config, args.backend, args.model_path)
         else:
             provider = APIProvider(config, args.model, args.base_url)
-        result = run_evaluation(provider, args.cases, args.output, args.locale, args.limit, args.verbose, args.jobs)
+        result = run_evaluation(provider, args.cases, args.output, args.locale, args.limit, args.verbose)
     except (RuntimeError, ValueError, OSError) as exc:
         print(f"评估失败：{exc}" if language == "zh" else f"Evaluation failed: {exc}", file=sys.stderr)
         return 2

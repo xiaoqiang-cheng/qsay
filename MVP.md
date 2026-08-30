@@ -208,7 +208,7 @@ dox eval --api --output reports/api.json --verbose
 - 单条请求错误数
 - p50、p95 和平均延迟
 - 输入、输出和总 token 用量
-- 单次请求、API 往返和整份评估墙钟耗时；API 可通过 `--jobs` 受控并发
+- 单次请求、API 往返和整份评估墙钟耗时；评估保持串行以保证单条延迟可比
 - 失败明细与完整 JSON 行级结果
 
 可通过 `--cases` 使用自定义数据集，通过可重复的 `--locale` 筛选 `zh`、`en`、`mixed`，通过 `--limit` 做冒烟测试。单条失败不会中止整份报告。

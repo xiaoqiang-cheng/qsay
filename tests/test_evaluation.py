@@ -1,5 +1,4 @@
 import json
-import time
 from pathlib import Path
 
 from dox.evaluation import default_cases_path, evaluate_call, load_cases, percentile, run_evaluation
@@ -32,14 +31,6 @@ class UsageFakeProvider(FakeProvider):
         message = super().complete(messages, tools, max_tokens)
         message["_usage"] = {"input_tokens": 10, "output_tokens": 4, "total_tokens": 14}
         return message
-
-
-class SlowFakeProvider(FakeProvider):
-    name = "slow-fake"
-
-    def complete(self, messages, tools=None, max_tokens=256):
-        time.sleep(0.03)
-        return super().complete(messages, tools, max_tokens)
 
 
 def test_evaluate_call_detects_critical_false_call():
@@ -109,25 +100,6 @@ def test_evaluation_report_sums_token_usage(tmp_path: Path):
         "total_tokens": 14,
     }
     assert result["rows"][0]["token_usage"]["total_tokens"] == 14
-
-
-def test_parallel_evaluation_preserves_order_and_reduces_wall_time(tmp_path: Path):
-    cases = tmp_path / "cases.jsonl"
-    cases.write_text("\n".join(
-        json.dumps({
-            "id": f"case-{index}",
-            "locale": "en",
-            "request": "extract a.tar into ./out",
-            "expected_tool": "extract_archive",
-            "expected_args": {"source": "a.tar", "destination": "./out"},
-            "class": "normal",
-        })
-        for index in range(4)
-    ) + "\n", encoding="utf-8")
-    result = run_evaluation(SlowFakeProvider(), cases, jobs=4)
-    assert [row["id"] for row in result["rows"]] == [f"case-{index}" for index in range(4)]
-    assert result["summary"]["jobs"] == 4
-    assert result["summary"]["evaluation_ms"] < 100
 
 
 class ErrorProvider(Provider):
