@@ -1,6 +1,7 @@
 import json
+import os
 
-from dox.providers import chat_endpoint, extract_tool_call, resolve_local_backend
+from dox.providers import chat_endpoint, extract_tool_call, resolve_local_backend, suppress_native_output
 from dox.config import Config, load_values
 
 
@@ -32,3 +33,13 @@ def test_extracts_qwen_xml_call():
 def test_auto_backend_is_cross_platform_llama_cpp():
     config = Config.from_values(load_values(__import__("pathlib").Path("/missing")))
     assert resolve_local_backend(config) == "llama-cpp"
+
+
+def test_suppresses_native_stderr_by_default(capfd, monkeypatch):
+    monkeypatch.delenv("DOX_LLAMA_LOG", raising=False)
+    with suppress_native_output():
+        os.write(2, b"native-noise\n")
+    os.write(2, b"visible-error\n")
+    _, stderr = capfd.readouterr()
+    assert "native-noise" not in stderr
+    assert "visible-error" in stderr

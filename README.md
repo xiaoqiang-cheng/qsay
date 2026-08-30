@@ -190,6 +190,9 @@ context-size = "2048"
 .venv/bin/python -m dox eval --local --limit 3 --verbose
 ```
 
+llama.cpp 的 Metal/kernel 探测日志默认隐藏。排查本地推理后端时，可用
+`DOX_LLAMA_LOG=1 dox ...` 临时显示原生日志。
+
 模型只负责规划和路由。命令风险升级、确认、高风险 `--yes` 阻断及执行仍由确定性代码控制；模型输出不会直接静默执行。
 
 设计细节见 [MVP.md](MVP.md)，模型实验见 [LOCAL-MODEL-RESEARCH.md](LOCAL-MODEL-RESEARCH.md) 和 [experiments/README.md](experiments/README.md)。

@@ -8,8 +8,9 @@ import sys
 import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 from .config import Config
 
@@ -147,12 +148,41 @@ def resolve_local_backend(config: Config, override: Optional[str] = None) -> str
     return "llama-cpp"
 
 
+@contextmanager
+def suppress_native_output() -> Iterator[None]:
+    """Silence native-library startup logs while preserving Python exceptions."""
+    if os.environ.get("DOX_LLAMA_LOG"):
+        yield
+        return
+
+    saved_descriptors = []
+    null_descriptor = os.open(os.devnull, os.O_WRONLY)
+    try:
+        for stream, descriptor in ((sys.stdout, 1), (sys.stderr, 2)):
+            try:
+                stream.flush()
+                saved = os.dup(descriptor)
+                os.dup2(null_descriptor, descriptor)
+            except (AttributeError, OSError):
+                continue
+            saved_descriptors.append((descriptor, saved))
+        yield
+    finally:
+        for descriptor, saved in reversed(saved_descriptors):
+            os.dup2(saved, descriptor)
+            os.close(saved)
+        os.close(null_descriptor)
+
+
 class LlamaCppProvider(Provider):
     name = "local:llama-cpp"
 
     def __init__(self, config: Config, model_path: Optional[str] = None):
         try:
-            from llama_cpp import Llama
+            # llama.cpp may probe every compiled Metal kernel during import and
+            # print harmless "not supported" lines even with verbose=False.
+            with suppress_native_output():
+                from llama_cpp import Llama
         except ImportError as exc:
             raise RuntimeError(
                 "缺少本地推理依赖。请运行 `python -m pip install 'dox-cli[local]'`"
@@ -166,14 +196,15 @@ class LlamaCppProvider(Provider):
         threads = config.local_threads or max(1, (os.cpu_count() or 2) // 2)
         self.model_path = path
         self.model_name = config.local_model or DEFAULT_LOCAL_MODEL
-        self._llm = Llama(
-            model_path=str(path),
-            n_ctx=config.local_context_size,
-            n_threads=threads,
-            n_threads_batch=threads,
-            n_gpu_layers=0,
-            verbose=False,
-        )
+        with suppress_native_output():
+            self._llm = Llama(
+                model_path=str(path),
+                n_ctx=config.local_context_size,
+                n_threads=threads,
+                n_threads_batch=threads,
+                n_gpu_layers=0,
+                verbose=False,
+            )
 
     def complete(self, messages: List[Dict[str, str]], tools: Optional[List[Dict[str, Any]]] = None, max_tokens: int = 256) -> Dict[str, Any]:
         local_messages = [dict(item) for item in messages]
